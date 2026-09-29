@@ -398,9 +398,9 @@ fn scenario_26_incremental_skips_unchanged_only() {
     let _ = fs::remove_dir_all(&config);
 }
 
-/// 场景 27：报告含四类清单，CSV 与 JSON 都可正常打开。
+/// 场景 27：输出目录保持干净（不生成 CSV / JSON），报告数据随 outcomes 返回、供界面日志区展示。
 #[test]
-fn scenario_27_report_has_all_four_categories() {
+fn scenario_27_output_dir_is_clean_and_outcomes_carry_report_data() {
     let root = material_root("s27");
     png(&root.join("resize.png"), 100, 100); // 会被改动
     png(&root.join("keep.png"), 100, 100); // 未改动（分组未覆盖）
@@ -468,27 +468,27 @@ fn scenario_27_report_has_all_four_categories() {
     assert_eq!(report.counts.success, 2, "resize 与 keep 两组都被设置了尺寸");
     assert!(report.counts.skipped >= 1, "不支持的格式应计入已跳过");
 
-    // 报告文件已写出
-    let csv = report.report_csv.clone().expect("应写出 CSV 报告");
-    let json = report.report_json.clone().expect("应写出 JSON 报告");
-    assert!(Path::new(&csv).exists());
-    assert!(Path::new(&json).exists());
-
-    // CSV：表头顺序符合规范 11.3
-    let text = fs::read_to_string(&csv).unwrap();
-    let header = text.lines().next().unwrap().trim_start_matches('\u{feff}');
-    assert_eq!(
-        header,
-        "源文件路径,输出文件路径,类型,所属分组,原宽度,原高度,目标宽度,目标高度,原体积,新体积,使用方式,状态,错误原因,耗时ms"
+    // 输出目录保持干净：只有新素材文件，不生成 CSV / JSON 报告（作者要求）
+    let out = PathBuf::from(&report.output_dir);
+    let names: Vec<String> = fs::read_dir(&out)
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    assert!(
+        !names.iter().any(|n| n.ends_with(".csv") || n.ends_with(".json")),
+        "输出目录不应有报告文件，实际：{names:?}"
     );
+    assert!(names.iter().any(|n| n == "resize.png"), "素材文件应写出");
 
-    // JSON：可解析且字段是 camelCase
-    let parsed: serde_json::Value = serde_json::from_str(&fs::read_to_string(&json).unwrap()).unwrap();
-    assert!(parsed.is_array());
-    let first = &parsed[0];
-    assert!(first.get("sourcePath").is_some());
-    assert!(first.get("targetWidth").is_some());
-    assert!(first.get("elapsedMs").is_some());
+    // 报告数据仍在 ExecReport.outcomes 里，供界面日志区展示
+    let statuses: std::collections::HashSet<&str> = report
+        .outcomes
+        .iter()
+        .map(|o| o.status.label())
+        .collect();
+    assert!(statuses.contains("成功"), "实际：{statuses:?}");
+    assert!(statuses.contains("已跳过"), "实际：{statuses:?}");
 
     let _ = fs::remove_dir_all(root.parent().unwrap());
 }

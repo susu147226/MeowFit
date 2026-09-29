@@ -11,7 +11,6 @@ pub mod logging;
 pub mod meta;
 pub mod model;
 pub mod presets;
-pub mod report;
 pub mod scan;
 pub mod svg;
 

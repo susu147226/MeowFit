@@ -729,8 +729,13 @@ export const useStore = create<MeowState>((set, get) => ({
       get().log("INFO", `输出目录：${report.outputDir}`);
       // 运行级说明，例如硬件编码失败后的回退（规范 6.9：回退行为须记录在日志中）
       for (const note of report.notes ?? []) get().log("WARN", note);
-      if (c.failed > 0) {
-        get().log("WARN", `有 ${c.failed} 个素材处理失败，详情见结果列表`);
+      // 报告内容改在日志区展示一部分：失败项与已跳过项逐条列出（输出目录不再写报告文件）
+      for (const outcome of report.outcomes) {
+        if (outcome.status === "failed") {
+          get().log("ERROR", `失败：${outcome.id} — ${outcome.reason ?? "未知原因"}`);
+        } else if (outcome.status === "skipped") {
+          get().log("WARN", `已跳过：${outcome.id} — ${outcome.reason ?? ""}`);
+        }
       }
     } catch (error) {
       set({ running: false });

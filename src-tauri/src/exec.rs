@@ -220,11 +220,6 @@ pub struct ExecReport {
     /// 本次是否为干跑（未写出任何文件）
     #[serde(default)]
     pub dry_run: bool,
-    /// 报告文件路径（成功写出时给出）
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub report_csv: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub report_json: Option<String>,
 }
 
 /// 本阶段能够写出的素材类型（动图见 P4）。
@@ -457,71 +452,6 @@ fn verify_output(
                 path.file_name().unwrap_or_default().to_string_lossy()
             ),
         ))
-    }
-}
-
-/// 按规范 11.3 的字段与顺序组装报告行。
-fn build_report_rows(
-    entries: &[crate::model::PlanEntry],
-    sources: &[SourceRef],
-    output_root: &Path,
-    outcomes: &[FileOutcome],
-) -> Vec<crate::report::ReportRow> {
-    let outcome_of: std::collections::HashMap<&str, &FileOutcome> =
-        outcomes.iter().map(|o| (o.id.as_str(), o)).collect();
-    let source_of: std::collections::HashMap<&str, &SourceRef> =
-        sources.iter().map(|s| (s.id.as_str(), s)).collect();
-
-    entries
-        .iter()
-        .map(|entry| (entry.id.as_str(), Some(entry)))
-        .chain(
-            outcomes
-                .iter()
-                .filter(|o| !entries.iter().any(|e| e.id == o.id))
-                .map(|o| (o.id.as_str(), None)),
-        )
-        .map(|(id, entry)| {
-            let outcome = outcome_of.get(id);
-            let source = source_of.get(id);
-            let target = entry.and_then(|e| e.target);
-
-            crate::report::ReportRow {
-                source_path: source.map(|s| s.path.clone()).unwrap_or_default(),
-                output_path: outcome.and_then(|o| o.output_path.clone()).unwrap_or_else(|| {
-                    output_root.join(id).to_string_lossy().into_owned()
-                }),
-                kind: source.map(|s| kind_label(s.kind)).unwrap_or("未知").to_string(),
-                group: entry.map(|e| e.group.clone()).unwrap_or_default(),
-                original_width: entry.map(|e| e.original_width.to_string()).unwrap_or_default(),
-                original_height: entry.map(|e| e.original_height.to_string()).unwrap_or_default(),
-                target_width: target.map(|t| t.width.to_string()).unwrap_or_default(),
-                target_height: target.map(|t| t.height.to_string()).unwrap_or_default(),
-                original_size: outcome.map(|o| o.original_size).unwrap_or(0).to_string(),
-                new_size: outcome
-                    .and_then(|o| o.new_size)
-                    .map(|n| n.to_string())
-                    .unwrap_or_default(),
-                mode: entry
-                    .and_then(|e| e.mode)
-                    .map(|m| format!("{m:?}"))
-                    .unwrap_or_else(|| "不变".into()),
-                status: outcome
-                    .map(|o| o.status.label().to_string())
-                    .unwrap_or_else(|| "未改动".into()),
-                error: outcome.and_then(|o| o.reason.clone()).unwrap_or_default(),
-                elapsed_ms: String::new(),
-            }
-        })
-        .collect()
-}
-
-fn kind_label(kind: crate::model::MediaKind) -> &'static str {
-    match kind {
-        crate::model::MediaKind::Raster => "静态图片",
-        crate::model::MediaKind::Svg => "SVG",
-        crate::model::MediaKind::Animated => "动图",
-        crate::model::MediaKind::Video => "视频",
     }
 }
 
@@ -1212,19 +1142,8 @@ pub fn execute_with(
         );
     }
 
-    // 报告：干跑也要完整出具（规范 6.5 / 场景 22）
-    let rows = build_report_rows(&plan.entries, sources, &output_root, &outcomes);
-    let (report_csv, report_json) = if opts.dry_run {
-        (None, None)
-    } else {
-        match crate::report::write_reports(&output_root, &rows) {
-            Ok((csv, json)) => (Some(csv), Some(json)),
-            Err(err) => {
-                notes.push(format!("报告写出失败：{}", err.message));
-                (None, None)
-            }
-        }
-    };
+    // 报告数据随 ExecReport.outcomes 返回给界面，由界面在日志区展示摘要，
+    // 不再往输出目录写 CSV / JSON 文件（作者要求：输出目录保持干净，只有新素材）。
 
     Ok(ExecReport {
         output_dir: output_root.to_string_lossy().into_owned(),
@@ -1232,8 +1151,6 @@ pub fn execute_with(
         counts,
         notes,
         dry_run: opts.dry_run,
-        report_csv,
-        report_json,
     })
 }
 

@@ -249,9 +249,6 @@ export interface ExecReport {
   notes: string[];
   /** 本次是否为干跑（未写出任何文件） */
   dryRun: boolean;
-  /** 报告文件路径 */
-  reportCsv?: string | null;
-  reportJson?: string | null;
 }
 
 /** 执行进度事件（规范 6.7） */
