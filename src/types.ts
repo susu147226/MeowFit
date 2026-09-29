@@ -133,6 +133,8 @@ export interface VideoOptions {
   accel: VideoAccel;
   /** 默认保持 HDR 原样传递 */
   tonemapToSdr: boolean;
+  /** 仅转编码、不缩放：视频未设置宽高时也按所选编码器转码 */
+  transcodeOnly: boolean;
 }
 
 export interface ScannedFile {

@@ -68,6 +68,8 @@ interface MeowState {
   animationToVideo: "none" | "mp4" | "webm";
   /** 动图目标体积（字节）；null 表示不限制 */
   animationTargetBytes: number | null;
+  /** 仅转编码、不缩放：视频未设置宽高时也按所选编码器转码 */
+  videoTranscodeOnly: boolean;
   /** 输出目录方式（规范 6.5） */
   outputMode: "sibling" | "user";
   /** 用户指定的输出目录 */
@@ -120,6 +122,7 @@ interface MeowState {
   setBasis: (basis: Basis) => void;
   setAnimationToVideo: (value: "none" | "mp4" | "webm") => void;
   setAnimationTargetBytes: (value: number | null) => void;
+  setVideoTranscodeOnly: (value: boolean) => void;
   setOutputMode: (mode: "sibling" | "user") => void;
   setUserOutputDir: (dir: string) => void;
   setDryRun: (value: boolean) => void;
@@ -181,6 +184,7 @@ export const useStore = create<MeowState>((set, get) => ({
   basis: "selection",
   animationToVideo: "none",
   animationTargetBytes: null,
+  videoTranscodeOnly: false,
   outputMode: "sibling",
   userOutputDir: null,
   dryRun: false,
@@ -488,6 +492,11 @@ export const useStore = create<MeowState>((set, get) => ({
 
   setAnimationTargetBytes: (value) => set({ animationTargetBytes: value }),
 
+  setVideoTranscodeOnly: (value) => {
+    set({ videoTranscodeOnly: value });
+    get().log("INFO", value ? "已开启「仅转编码」：视频未设宽高也按所选编码器转码" : "已关闭「仅转编码」");
+  },
+
   setOutputMode: (mode) => set({ outputMode: mode }),
   setUserOutputDir: (dir) => set({ userOutputDir: dir }),
   setDryRun: (value) => set({ dryRun: value }),
@@ -714,6 +723,7 @@ export const useStore = create<MeowState>((set, get) => ({
           hardware: state.settings?.processing.hardwareAccel ?? false,
           accel: state.settings?.processing.videoAccel ?? ("nvenc" as const),
           tonemapToSdr: state.settings?.processing.hdrTonemapToSdr ?? false,
+          transcodeOnly: state.videoTranscodeOnly,
         },
       };
 

@@ -20,6 +20,8 @@ export default function VideoOptionsPanel() {
   const files = useStore((s) => s.files);
   const ffmpegCheck = useStore((s) => s.ffmpegCheck);
   const setProcessing = useStore((s) => s.setProcessing);
+  const videoTranscodeOnly = useStore((s) => s.videoTranscodeOnly);
+  const setVideoTranscodeOnly = useStore((s) => s.setVideoTranscodeOnly);
 
   if (!settings) return null;
 
@@ -64,6 +66,13 @@ export default function VideoOptionsPanel() {
           options={CODECS.map((c) => ({ value: c, label: CODEC_LABEL[c] }))}
         />
       </Field>
+
+      <Checkbox checked={videoTranscodeOnly} onChange={setVideoTranscodeOnly}>
+        仅转编码（保持原尺寸，不缩放）
+      </Checkbox>
+      <p className="text-[11px] leading-relaxed text-faint">
+        开启后，未设置缩放尺寸的视频也会按上面所选编码器转码（如 HEVC 转 H.264），尺寸保持不变。
+      </p>
 
       <Field label={`质量 CRF ${processing.videoCrf}`} hint="数值越小画质越好、体积越大">
         <input

@@ -450,6 +450,7 @@ mod tests {
             container: crate::ffmpeg::Container::Mkv,
             video_bitrate_k: None,
             fps: None,
+            no_scale: false,
         };
         let text = build_to_video_args(&j, &video).join(" ");
         assert!(!text.contains("-movflags"), "WebM 不能带 +faststart");
@@ -475,6 +476,7 @@ mod tests {
             container: crate::ffmpeg::Container::Mp4,
             video_bitrate_k: None,
             fps: None,
+            no_scale: false,
         };
         let args = build_to_video_args(&j, &video);
         let text = args.join(" ");

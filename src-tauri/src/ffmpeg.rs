@@ -376,16 +376,21 @@ pub struct VideoJob {
     /// 目标帧率；给定且低于源帧率时用于降帧
     #[serde(default)]
     pub fps: Option<f64>,
+    /// 仅转编码、不缩放：不加 scale 滤镜（仅转编码功能）
+    #[serde(default)]
+    pub no_scale: bool,
 }
 
 impl VideoJob {
-    /// 滤镜链：宽高已由 `compute_target` 保证为偶数，取偶不交给滤镜（规范 12.1）。
-    fn filter(&self) -> String {
+    /// 滤镜链；`None` 表示既不需要缩放也不需要色调映射（仅转编码）。
+    /// 宽高已由 `compute_target` 保证为偶数，取偶不交给滤镜（规范 12.1）。
+    fn filter(&self) -> Option<String> {
         let scale = format!("scale={}:{}:flags=lanczos", self.width, self.height);
-        if self.tonemap_to_sdr {
-            format!("{TONEMAP_CHAIN},{scale}")
-        } else {
-            scale
+        match (self.no_scale, self.tonemap_to_sdr) {
+            (true, false) => None,
+            (true, true) => Some(TONEMAP_CHAIN.to_string()),
+            (false, true) => Some(format!("{TONEMAP_CHAIN},{scale}")),
+            (false, false) => Some(scale),
         }
     }
 }
@@ -399,8 +404,10 @@ pub fn build_args(job: &VideoJob) -> Vec<String> {
 
     // 旋转元数据：不使用 -noautorotate，交由 ffmpeg 按显示矩阵把画面摆正，
     // 滤镜因此作用在摆正后的帧上，输出观感方向与原视频一致。
-    args.push("-vf".into());
-    args.push(job.filter());
+    if let Some(filter) = job.filter() {
+        args.push("-vf".into());
+        args.push(filter);
+    }
 
     args.push("-c:v".into());
     args.push(job.encoder.clone());
@@ -428,9 +435,14 @@ pub fn build_args(job: &VideoJob) -> Vec<String> {
     args.push("-c:a".into());
     args.push("copy".into());
 
-    // 保留全部流与元数据（含章节）
-    args.push("-map".into());
-    args.push("0".into());
+    // 映射视频 / 音频 / 字幕流。注意不能用 `-map 0`：它会连 data 流
+    // （codec_type=unknown，如封面、附属数据）一起映射，而 data 流没有编码器，
+    // 会导致整个转换报「-22 Invalid argument」。
+    // 章节默认随输入复制，无需显式 -map_chapters。
+    for stream in ["0:v", "0:a?", "0:s?"] {
+        args.push("-map".into());
+        args.push(stream.into());
+    }
     args.push("-map_metadata".into());
     args.push("0".into());
 
@@ -575,6 +587,7 @@ mod tests {
             container,
             video_bitrate_k: None,
             fps: None,
+            no_scale: false,
         }
     }
 
@@ -598,16 +611,43 @@ mod tests {
     }
 
     #[test]
-    fn keeps_audio_untouched_and_maps_everything() {
+    fn keeps_audio_untouched_and_maps_video_audio_subtitle_streams() {
         let args = build_args(&job("libx264", Container::Mp4));
         let text = joined(&args);
         // 音频直接复制、不重新编码
         assert!(text.contains("-c:a copy"));
-        // 保留全部流与元数据（含章节）
-        assert!(text.contains("-map 0"));
+        // 只映射 v / a / s 流，跳过 data 流（codec_type=unknown），否则整个转换会失败
+        assert!(text.contains("-map 0:v"));
+        assert!(text.contains("-map 0:a?"));
+        assert!(text.contains("-map 0:s?"));
+        assert!(!text.contains("-map 0 "), "不得再出现裸的 -map 0（会连 data 流一起映射）");
         assert!(text.contains("-map_metadata 0"));
         // 不得出现会破坏显示方向的 -noautorotate
         assert!(!text.contains("-noautorotate"));
+    }
+
+    #[test]
+    fn transcode_only_omits_scale_filter() {
+        let mut j = job("libx264", Container::Mp4);
+        j.no_scale = true;
+        let args = build_args(&j);
+        // 仅转编码：不缩放，没有 -vf 滤镜
+        assert!(!args.contains(&"-vf".to_string()));
+        // 仍有编码器参数，转码照常进行
+        assert!(joined(&args).contains("-c:v libx264"));
+    }
+
+    #[test]
+    fn transcode_only_with_tonemap_keeps_tonemap_but_drops_scale() {
+        let mut j = job("libx264", Container::Mp4);
+        j.no_scale = true;
+        j.tonemap_to_sdr = true;
+        let args = build_args(&j);
+        let idx = args.iter().position(|a| a == "-vf").unwrap();
+        let filter = &args[idx + 1];
+        assert!(filter.contains("tonemap"), "仍应做色调映射，实际：{filter}");
+        // 视频缩放滤镜的标志是 flags=lanczos；zscale 里没有它
+        assert!(!filter.contains("flags=lanczos"), "不应再缩放，实际：{filter}");
     }
 
     #[test]

@@ -53,6 +53,9 @@ pub struct VideoOptions {
     /// 默认保持 HDR 原样传递；开启后色调映射到 SDR
     #[serde(default)]
     pub tonemap_to_sdr: bool,
+    /// 仅转编码、不缩放：视频即使未设置宽高也按所选编码器转码，保持原尺寸
+    #[serde(default)]
+    pub transcode_only: bool,
 }
 
 fn default_codec() -> String {
@@ -77,6 +80,7 @@ impl Default for VideoOptions {
             hardware: false,
             accel: default_accel(),
             tonemap_to_sdr: false,
+            transcode_only: false,
         }
     }
 }
@@ -289,6 +293,7 @@ fn encode_animation(
             container: ffmpeg::Container::from_ext(&out_ext),
             video_bitrate_k: None,
             fps: None,
+            no_scale: false,
         };
         crate::animate::build_to_video_args(&job, &video)
     } else {
@@ -683,6 +688,7 @@ fn encode_video(
         container: ffmpeg::Container::from_ext(&out_ext),
         video_bitrate_k: None,
         fps: None,
+        no_scale: opts.transcode_only,
     };
 
     match ffmpeg::run_ffmpeg(paths, &ffmpeg::build_args(&job)) {
@@ -894,7 +900,12 @@ pub fn execute_with(
         }
 
         // 未改动：不写出、不复制、不转码（规范 6.4 / 10.4）
-        if entry.action == Action::Unchanged {
+        // 例外：「仅转编码」开启时，视频即使尺寸未变也按所选编码器转码（保持原尺寸）
+        let transcode_video = entry.action == Action::Unchanged
+            && source.kind == crate::model::MediaKind::Video
+            && opts.video.transcode_only;
+
+        if entry.action == Action::Unchanged && !transcode_video {
             outcomes.push(FileOutcome {
                 id: entry.id.clone(),
                 status: Status::Unchanged,
@@ -906,13 +917,28 @@ pub fn execute_with(
             continue;
         }
 
-        let target = match entry.target {
-            Some(t) => t,
-            None => continue,
+        let target = if transcode_video {
+            // 仅转编码：保持原尺寸，encode_video 里 no_scale 会跳过 scale 滤镜
+            crate::model::Computed {
+                width: entry.original_width,
+                height: entry.original_height,
+                content_width: entry.original_width,
+                content_height: entry.original_height,
+                anchor: crate::model::Anchor::Center,
+            }
+        } else {
+            match entry.target {
+                Some(t) => t,
+                None => continue,
+            }
         };
-        let mode = match entry.mode {
-            Some(m) => m,
-            None => continue,
+        let mode = if transcode_video {
+            crate::model::Mode::A
+        } else {
+            match entry.mode {
+                Some(m) => m,
+                None => continue,
+            }
         };
 
         if !supported_kind(source.kind) {
