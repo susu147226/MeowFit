@@ -123,6 +123,7 @@ fn sources_of(files: &[meowfit_lib::scan::ScannedFile]) -> Vec<SourceRef> {
             kind: f.kind.unwrap(),
                 loop_count: None,
                 ext: None,
+                skip_reason: None,
             })
         .collect()
 }

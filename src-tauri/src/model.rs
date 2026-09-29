@@ -271,6 +271,9 @@ pub struct PlanEntry {
     /// 该条目被使用的方式编号（A–G）；未改动时为 null
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mode: Option<Mode>,
+    /// 生效的完整设置；增量处理据此计算指纹（规范 11.4）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub setting: Option<Setting>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<AppError>,
 }

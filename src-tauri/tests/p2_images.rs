@@ -145,6 +145,7 @@ fn run_with(
             kind: f.kind.unwrap(),
                 loop_count: None,
                 ext: None,
+                skip_reason: None,
             })
         .collect();
 
@@ -259,7 +260,8 @@ fn scenario_9_resample_choice_changes_output_pixels() {
             kind: result.files[0].kind.unwrap(),
                 loop_count: None,
                 ext: None,
-            }];
+        skip_reason: None,
+        }];
         let report = execute(&plan, &sources, &root, &opts).unwrap();
         let out = PathBuf::from(&report.output_dir).join("board.png");
         let _ = tag;

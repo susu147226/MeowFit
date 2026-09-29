@@ -112,6 +112,9 @@ pub struct ImageOptions {
     pub keep_all_metadata: bool,
     #[serde(default = "default_fill")]
     pub background_fill: String,
+    /// 目标体积（字节）；给定时按规范 10.7 的阶梯逐级逼近
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_bytes: Option<u64>,
 }
 
 fn default_quality() -> u8 {
@@ -130,6 +133,7 @@ impl Default for ImageOptions {
             format: OutputFormat::default(),
             keep_all_metadata: false,
             background_fill: default_fill(),
+            target_bytes: None,
         }
     }
 }

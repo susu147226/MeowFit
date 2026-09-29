@@ -39,12 +39,16 @@ pub fn build_plan(req: &PlanRequest) -> Plan {
 
         match compute_target(file.width, file.height, &setting, file.is_video) {
             Ok(None) => {
-                entries.push(base_entry(file, source, Action::Unchanged));
+                entries.push(PlanEntry {
+                    setting: Some(setting.clone()),
+                    ..base_entry(file, source, Action::Unchanged)
+                });
             }
             Ok(Some(target)) => {
                 entries.push(PlanEntry {
                     target: Some(target),
                     mode: Some(setting.mode),
+                    setting: Some(setting.clone()),
                     ..base_entry(file, source, Action::Resize)
                 });
             }
@@ -76,6 +80,7 @@ fn base_entry(
         original_height: file.height,
         target: None,
         mode: None,
+        setting: None,
         error: None,
     }
 }

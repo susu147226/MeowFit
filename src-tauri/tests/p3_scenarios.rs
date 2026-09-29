@@ -197,6 +197,7 @@ fn run_with(
             kind: f.kind.unwrap(),
                 loop_count: None,
                 ext: None,
+                skip_reason: None,
             })
         .collect();
 

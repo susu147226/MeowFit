@@ -170,6 +170,7 @@ fn run_with(
             kind: f.kind.unwrap(),
             loop_count: f.animation.as_ref().map(|a| a.loop_count),
             ext: Some(f.ext.clone()),
+        skip_reason: None,
         })
         .collect();
 

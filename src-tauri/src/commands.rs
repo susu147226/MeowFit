@@ -4,6 +4,10 @@
 //! （规范 20.4：不得有第二份实现）。
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+use tauri::Emitter;
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -22,6 +26,8 @@ pub const LICENSE_NAME: &str = "喵尺 MeowFit 许可证（私有，禁止再分
 pub struct AppState {
     pub config_dir: PathBuf,
     pub config_mode: ConfigMode,
+    /// 执行中可置位以取消（规范 6.7）
+    pub cancel: Arc<AtomicBool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,12 +77,29 @@ pub fn preview_plan(request: PlanRequest) -> Plan {
     build_plan(&request)
 }
 
+/// 执行进度事件（规范 6.7）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProgressEvent {
+    pub done: usize,
+    pub total: usize,
+    pub current: String,
+}
+
+/// 取消当前执行：已完成的保留，未开始的停止（规范 6.7）。
+#[tauri::command]
+pub fn cancel_execute(state: State<'_, AppState>) {
+    state.cancel.store(true, Ordering::Relaxed);
+}
+
 /// 执行计划并写出。
 ///
 /// 调用方必须先确认 `plan.ok == true`；此处再做一次兜底，防止界面漏判后写出半套结果
 /// （规范 13.1：`VALIDATION_FAILED` 时不得执行任何写出）。
 #[tauri::command]
 pub fn execute_plan(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
     request: PlanRequest,
     sources: Vec<SourceRef>,
     options: Option<ExecOptions>,
@@ -95,8 +118,86 @@ pub fn execute_plan(
             failed.join("、")
         ));
     }
-    exec::execute(&plan, &sources, Path::new(&root), &options.unwrap_or_default())
-        .map_err(|e| format!("{} {}", e.code.as_str(), e.message))
+
+    state.cancel.store(false, Ordering::Relaxed);
+
+    let handle = app.clone();
+    let mut progress = |done: usize, total: usize, current: &str| {
+        let _ = handle.emit(
+            "meowfit://progress",
+            ProgressEvent {
+                done,
+                total,
+                current: current.to_string(),
+            },
+        );
+    };
+
+    run_plan(
+        &plan,
+        &sources,
+        &root,
+        options,
+        Some(state.config_dir.to_string_lossy().into_owned()),
+        Some(&mut progress),
+        Some(&state.cancel),
+    )
+}
+
+/// 执行的实际逻辑。
+///
+/// 抽出来是为了能在没有 Tauri 运行时的测试里直接调用——命令层只是包了一层
+/// 事件发射与状态读取。
+pub fn run_plan(
+    plan: &Plan,
+    sources: &[SourceRef],
+    root: &str,
+    options: Option<ExecOptions>,
+    config_dir: Option<String>,
+    progress: Option<&mut dyn FnMut(usize, usize, &str)>,
+    cancel: Option<&AtomicBool>,
+) -> Result<ExecReport, String> {
+    // 兜底再查一次：校验失败时不得写出任何文件（规范 13.1）
+    if !plan.ok {
+        let failed: Vec<&str> = plan
+            .entries
+            .iter()
+            .filter(|e| e.error.is_some())
+            .map(|e| e.name.as_str())
+            .collect();
+        return Err(format!(
+            "存在校验失败的素材，已阻止执行：{}",
+            failed.join("、")
+        ));
+    }
+
+    // 配置目录用于写日志与增量索引
+    let mut options = options.unwrap_or_default();
+    options.config_dir = config_dir;
+
+    exec::execute_with(
+        plan,
+        sources,
+        Path::new(root),
+        &options,
+        progress,
+        cancel,
+    )
+    .map_err(|e| format!("{} {}", e.code.as_str(), e.message))
+}
+
+/// 目标路径所在磁盘的可用空间（字节），供磁盘空间预检使用（规范 6.6）。
+#[tauri::command]
+pub fn disk_free_space(path: String) -> Result<u64, String> {
+    let mut probe = PathBuf::from(&path);
+    // 目录可能还不存在，往上找到最近一个存在的祖先再问
+    while !probe.exists() {
+        match probe.parent() {
+            Some(parent) if parent != probe => probe = parent.to_path_buf(),
+            _ => return Err(format!("无法确定可用空间：{path}")),
+        }
+    }
+    fs2::available_space(&probe).map_err(|e| format!("读取磁盘可用空间失败：{e}"))
 }
 
 #[tauri::command]

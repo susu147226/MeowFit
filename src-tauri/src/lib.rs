@@ -6,8 +6,11 @@ pub mod error;
 pub mod exec;
 pub mod ffmpeg;
 pub mod imaging;
+pub mod incremental;
+pub mod logging;
 pub mod meta;
 pub mod model;
+pub mod report;
 pub mod scan;
 pub mod svg;
 
@@ -19,6 +22,7 @@ pub fn run() {
     let state = commands::AppState {
         config_dir: PathBuf::from(&location.dir),
         config_mode: location.mode,
+        cancel: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
     };
 
     tauri::Builder::default()
@@ -35,6 +39,8 @@ pub fn run() {
             commands::touch_recent_folder,
             commands::read_background_image,
             commands::ffmpeg_self_check,
+            commands::cancel_execute,
+            commands::disk_free_space,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

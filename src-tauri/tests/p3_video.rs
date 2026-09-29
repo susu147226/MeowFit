@@ -114,7 +114,8 @@ fn executing_a_video_without_ffmpeg_fails_loudly() {
         kind: meowfit_lib::model::MediaKind::Video,
                 loop_count: None,
                 ext: None,
-            }];
+        skip_reason: None,
+        }];
 
     let report = meowfit_lib::exec::execute(
         &plan,

@@ -254,10 +254,13 @@ fn command_layer_end_to_end() {
             kind: f.kind.unwrap(),
                 loop_count: None,
                 ext: None,
+                skip_reason: None,
             })
         .collect();
 
-    let report = commands::execute_plan(request, sources, None, root_str).expect("执行应成功");
+    let plan = commands::preview_plan(request.clone());
+    let report = commands::run_plan(&plan, &sources, &root_str, None, None, None, None)
+        .expect("执行应成功");
     assert_eq!(report.counts.success, 2);
     assert_eq!(report.counts.unchanged, 1);
 
@@ -304,8 +307,10 @@ fn command_layer_refuses_invalid_plan() {
         kind: meowfit_lib::model::MediaKind::Raster,
                 loop_count: None,
                 ext: None,
-            }];
-    let err = commands::execute_plan(request, sources, None, root_str).unwrap_err();
+        skip_reason: None,
+        }];
+    let plan = commands::preview_plan(request.clone());
+    let err = commands::run_plan(&plan, &sources, &root_str, None, None, None, None).unwrap_err();
     assert!(err.contains("校验失败"), "实际错误：{err}");
 
     let out = root.parent().unwrap().join("output");
