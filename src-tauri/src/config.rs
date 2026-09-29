@@ -89,6 +89,58 @@ pub fn resolve_config_dir() -> ConfigLocation {
 // settings.json —— 结构见规范 11.1
 // ---------------------------------------------------------------------------
 
+/// 主工作区的一列：列内纵向堆叠若干分区。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayoutColumnConfig {
+    pub id: String,
+    /// files | settings | preview | run
+    pub panels: Vec<String>,
+    /// `None` 表示自适应剩余宽度
+    #[serde(default)]
+    pub width: Option<u32>,
+    /// 列内第二个及之后分区的高度
+    #[serde(default = "default_run_height")]
+    pub tail_height: u32,
+}
+
+/// 分区布局：由用户拖动分区自行排布（规范第七节的个性化布局）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayoutConfig {
+    pub columns: Vec<LayoutColumnConfig>,
+    #[serde(default = "default_log_height")]
+    pub log_height: u32,
+}
+
+impl Default for LayoutConfig {
+    fn default() -> Self {
+        Self {
+            columns: vec![
+                LayoutColumnConfig {
+                    id: "col-files".into(),
+                    panels: vec!["files".into()],
+                    width: None,
+                    tail_height: default_run_height(),
+                },
+                LayoutColumnConfig {
+                    id: "col-settings".into(),
+                    panels: vec!["settings".into()],
+                    width: Some(default_sidebar_width()),
+                    tail_height: default_run_height(),
+                },
+                LayoutColumnConfig {
+                    id: "col-preview".into(),
+                    panels: vec!["preview".into(), "run".into()],
+                    width: Some(430),
+                    tail_height: default_run_height(),
+                },
+            ],
+            log_height: default_log_height(),
+        }
+    }
+}
+
 /// 界面外观（规范 6.14 / 第七节）。背景图仅服务界面外观，不进入素材处理流程。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -120,6 +172,9 @@ pub struct ThemeConfig {
     /// 日志区展开时的高度（px），可由分隔条拖动
     #[serde(default = "default_log_height")]
     pub log_height: u32,
+    /// 分区布局；为 `None` 时界面按上面几个尺寸推出默认排布
+    #[serde(default)]
+    pub layout: Option<LayoutConfig>,
 }
 
 fn default_true() -> bool {
@@ -160,6 +215,7 @@ impl Default for ThemeConfig {
             preview_width: default_sidebar_width(),
             run_height: default_run_height(),
             log_height: default_log_height(),
+            layout: None,
         }
     }
 }

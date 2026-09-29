@@ -157,7 +157,8 @@ export default function SettingsPanel({
 
   if (files.length === 0) {
     return (
-      <Panel title="参数设置区" className={className} width={width}>
+      <Panel title="参数设置区"
+      dataPanelId="settings" className={className} width={width}>
         <div className="panel-body space-y-3">
           <EmptyHint>
             <span>载入素材后在此设置缩放参数</span>
@@ -172,6 +173,7 @@ export default function SettingsPanel({
   return (
     <Panel
       title="参数设置区"
+      dataPanelId="settings"
       className={className}
       width={width}
       right={

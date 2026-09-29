@@ -9,7 +9,8 @@ export default function PreviewPanel({ className = "" }: { className?: string })
 
   if (files.length === 0) {
     return (
-      <Panel title="预览区" className={className}>
+      <Panel title="预览区"
+      dataPanelId="preview" className={className}>
         <EmptyHint>
           <span>载入素材后在此预览结果</span>
         </EmptyHint>
@@ -27,6 +28,7 @@ export default function PreviewPanel({ className = "" }: { className?: string })
   return (
     <Panel
       title="预览区"
+      dataPanelId="preview"
       className={className}
       right={
         plan ? (

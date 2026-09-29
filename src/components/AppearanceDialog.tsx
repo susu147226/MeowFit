@@ -2,12 +2,12 @@ import { pickBackgroundImage } from "../api";
 import { useStore } from "../store";
 import {
   ACCENT_PRESETS,
-  DEFAULT_LAYOUT,
   DENSITY_LABEL,
   THEME_MODE_LABEL,
   type Density,
   type ThemeMode,
 } from "../types";
+import { DEFAULT_LAYOUT, PANEL_TITLE } from "../lib/layout";
 import { Button, Checkbox, Field, Tag } from "./ui";
 
 const MODES: ThemeMode[] = ["system", "light", "dark"];
@@ -19,6 +19,8 @@ export default function AppearanceDialog() {
   const resolvedTheme = useStore((s) => s.resolvedTheme);
   const backgroundUrl = useStore((s) => s.backgroundUrl);
   const setTheme = useStore((s) => s.setTheme);
+  const layout = useStore((s) => s.layout);
+  const applyLayout = useStore((s) => s.applyLayout);
   const setAppearanceOpen = useStore((s) => s.setAppearanceOpen);
 
   if (!theme) return null;
@@ -159,21 +161,27 @@ export default function AppearanceDialog() {
 
           <Field
             label="界面布局"
-            hint="主界面四条分隔条都可以直接拖动：列表｜参数、参数｜预览、预览／执行、主区｜日志"
+            hint="按住分区标题栏左侧的 ⠿ 把手拖动，可把分区放到别的列或新建一列；列之间与列内的分隔条也可拖动"
           >
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-[11px] text-faint">
-                参数列 {theme.sidebarWidth} · 预览列 {theme.previewWidth} · 执行 {theme.runHeight} · 日志{" "}
-                {theme.logHeight}
-              </span>
-              <Button onClick={() => void setTheme({ ...DEFAULT_LAYOUT })}>恢复默认布局</Button>
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-1">
+                {layout.columns.map((column, index) => (
+                  <span key={column.id} className="flex items-center gap-1">
+                    {index > 0 && <span className="text-faint">│</span>}
+                    <span className="rounded bg-surface-3 px-1.5 py-0.5 text-[11px] text-muted">
+                      {column.panels.map((p) => PANEL_TITLE[p]).join(" / ")}
+                    </span>
+                  </span>
+                ))}
+              </div>
+              <Button onClick={() => applyLayout(DEFAULT_LAYOUT)}>恢复默认布局</Button>
             </div>
           </Field>
         </div>
 
         <div className="mt-5 flex justify-between">
           <Button
-            onClick={() =>
+            onClick={() => {
               void setTheme({
                 mode: "system",
                 accent: ACCENT_PRESETS[0].value,
@@ -181,9 +189,9 @@ export default function AppearanceDialog() {
                 backgroundImage: null,
                 backgroundOpacity: 100,
                 autoScrim: true,
-                ...DEFAULT_LAYOUT,
-              })
-            }
+              });
+              applyLayout(DEFAULT_LAYOUT);
+            }}
           >
             恢复默认外观
           </Button>

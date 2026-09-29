@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 import { api } from "./api";
 import { buildRequest, coalesce, type Basis, type Scope } from "./lib/planInput";
+import { DEFAULT_LAYOUT, fromLegacy, parseLayout, type Layout } from "./lib/layout";
 import { accentPalette } from "./lib/color";
 import type {
   AppInfo,
@@ -39,6 +40,8 @@ interface MeowState {
   backgroundPath: string | null;
   aboutOpen: boolean;
   appearanceOpen: boolean;
+  /** 分区布局：用户拖出来的排布（规范第七节的个性化布局） */
+  layout: Layout;
 
   root: string | null;
   scanOptions: ScanOptions;
@@ -76,6 +79,7 @@ interface MeowState {
   setTheme: (patch: Partial<Settings["theme"]>) => Promise<void>;
   setAboutOpen: (open: boolean) => void;
   setAppearanceOpen: (open: boolean) => void;
+  applyLayout: (next: Layout) => void;
 
   setScanOptions: (patch: Partial<ScanOptions>) => void;
   scanFolder: (path: string, options?: Partial<ScanOptions>) => Promise<void>;
@@ -116,6 +120,7 @@ export const useStore = create<MeowState>((set, get) => ({
   backgroundPath: null,
   aboutOpen: false,
   appearanceOpen: false,
+  layout: DEFAULT_LAYOUT,
 
   root: null,
   scanOptions: { recursive: true, include: [], exclude: [] },
@@ -154,7 +159,20 @@ export const useStore = create<MeowState>((set, get) => ({
   init: async () => {
     try {
       const [info, settings] = await Promise.all([api.appInfo(), api.loadSettings()]);
-      set({ info, settings, grouping: settings.grouping });
+      set({
+        info,
+        settings,
+        grouping: settings.grouping,
+        // 老配置没有 layout 段时，用旧的四个尺寸推出等价排布
+        layout:
+          parseLayout(settings.theme.layout) ??
+          fromLegacy(
+            settings.theme.sidebarWidth,
+            settings.theme.previewWidth,
+            settings.theme.runHeight,
+            settings.theme.logHeight,
+          ),
+      });
       await get().applyAppearance();
 
       get().log("INFO", `${info.name} v${info.version} 已启动`);
@@ -224,6 +242,21 @@ export const useStore = create<MeowState>((set, get) => ({
   setAboutOpen: (open) => set({ aboutOpen: open }),
 
   setAppearanceOpen: (open) => set({ appearanceOpen: open }),
+
+  /** 应用新的分区布局并持久化。 */
+  applyLayout: (next) => {
+    set({ layout: next });
+    const settings = get().settings;
+    if (!settings) return;
+    const updated: Settings = {
+      ...settings,
+      theme: { ...settings.theme, layout: next },
+    };
+    set({ settings: updated });
+    api
+      .saveSettings(updated)
+      .catch((error) => get().log("ERROR", `保存布局失败：${String(error)}`));
+  },
 
   setScanOptions: (patch) => set((state) => ({ scanOptions: { ...state.scanOptions, ...patch } })),
 

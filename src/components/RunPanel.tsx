@@ -30,6 +30,7 @@ export default function RunPanel({
   return (
     <Panel
       title="执行与进度区"
+      dataPanelId="run"
       className={className}
       height={height}
       right={

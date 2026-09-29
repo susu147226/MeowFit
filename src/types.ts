@@ -224,6 +224,21 @@ export interface AppInfo {
 export type ThemeMode = "system" | "light" | "dark";
 export type Density = "compact" | "standard" | "relaxed";
 
+/** 主工作区的一列（与 Rust 侧 LayoutColumnConfig 对应） */
+export interface LayoutColumnConfig {
+  id: string;
+  /** files | settings | preview | run */
+  panels: string[];
+  width: number | null;
+  tailHeight: number;
+}
+
+/** 分区布局（规范第七节的个性化布局） */
+export interface LayoutConfig {
+  columns: LayoutColumnConfig[];
+  logHeight: number;
+}
+
 export interface ThemeSettings {
   /** 默认跟随系统外观 */
   mode: ThemeMode;
@@ -244,6 +259,8 @@ export interface ThemeSettings {
   runHeight: number;
   /** 日志区展开时的高度（px） */
   logHeight: number;
+  /** 分区布局；为 null 时按上面几个尺寸推出默认排布 */
+  layout: LayoutConfig | null;
 }
 
 export const THEME_MODE_LABEL: Record<ThemeMode, string> = {

@@ -1,6 +1,13 @@
-import type { CSSProperties, ReactNode } from "react";
+import { createContext, useContext } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 
 /** 五个主分区共用的面板外壳（规范第七节）。 */
+/** 分区拖拽由应用外壳提供：各分区只要报上自己的 id 就能获得拖动把手。 */
+export const PanelDragContext = createContext<{
+  start: (panelId: string, event: ReactPointerEvent) => void;
+  draggingId: string | null;
+} | null>(null);
+
 export function Panel({
   title,
   right,
@@ -8,6 +15,7 @@ export function Panel({
   className = "",
   width,
   height,
+  dataPanelId,
 }: {
   title: string;
   right?: ReactNode;
@@ -17,16 +25,33 @@ export function Panel({
   width?: number;
   /** 由分隔条拖拽出来的高度（个性化布局） */
   height?: number;
+  /** 分区标识；给了它就会出现拖动把手 */
+  dataPanelId?: string;
 }) {
+  const drag = useContext(PanelDragContext);
   const style: CSSProperties = {};
   if (width !== undefined) style.width = width;
   if (height !== undefined) style.height = height;
+  const dragging = Boolean(drag && dataPanelId && drag.draggingId === dataPanelId);
+
   return (
     <section
-      className={`flex min-h-0 flex-col overflow-hidden ${className}`}
+      data-panel-id={dataPanelId}
+      className={`flex min-h-0 flex-col overflow-hidden ${dragging ? "opacity-50" : ""} ${className}`}
       style={Object.keys(style).length > 0 ? style : undefined}
     >
       <div className="panel-head">
+        {drag && dataPanelId && (
+          <span
+            role="button"
+            aria-label="拖动以调整布局"
+            title="按住拖动，可把本分区移到别的位置"
+            onPointerDown={(event) => drag.start(dataPanelId, event)}
+            className="cursor-grab touch-none text-[11px] leading-none text-faint transition select-none hover:text-text active:cursor-grabbing"
+          >
+            ⠿
+          </span>
+        )}
         <h2 className="panel-title">{title}</h2>
         <div className="ml-auto flex items-center gap-2">{right}</div>
       </div>

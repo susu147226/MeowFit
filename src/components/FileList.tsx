@@ -89,7 +89,8 @@ export default function FileList({ className = "" }: { className?: string }) {
 
   if (files.length === 0) {
     return (
-      <Panel title="素材列表区" className={className}>
+      <Panel title="素材列表区"
+      dataPanelId="files" className={className}>
         <EmptyHint>
           <span>选择或拖入一个文件夹以开始扫描</span>
         </EmptyHint>
@@ -140,6 +141,7 @@ export default function FileList({ className = "" }: { className?: string }) {
   return (
     <Panel
       title="素材列表区"
+      dataPanelId="files"
       className={className}
       right={
         <>
