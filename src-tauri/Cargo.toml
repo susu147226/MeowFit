@@ -1,6 +1,6 @@
 [package]
 name = "meowfit"
-version = "0.1.3"
+version = "0.1.4"
 description = "喵尺 MeowFit — 本地媒体尺寸批量调整工具（仅 Windows）"
 authors = ["云舒眠眠"]
 edition = "2021"
