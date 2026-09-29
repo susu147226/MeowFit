@@ -3,9 +3,8 @@ import { Button } from "./ui";
 
 export default function TopBar() {
   const info = useStore((s) => s.info);
-  const theme = useStore((s) => s.theme);
-  const toggleTheme = useStore((s) => s.toggleTheme);
   const setAboutOpen = useStore((s) => s.setAboutOpen);
+  const setAppearanceOpen = useStore((s) => s.setAppearanceOpen);
 
   return (
     <header className="flex shrink-0 items-center gap-3 border-b border-border bg-surface px-4 py-2.5">
@@ -24,15 +23,12 @@ export default function TopBar() {
 
       <span className="ml-auto flex items-center gap-2">
         {info && !info.configPersistent && (
-          <span
-            className="tag bg-warn-soft text-warn"
-            title={`配置目录：${info.configDir}`}
-          >
+          <span className="tag bg-warn-soft text-warn" title={`配置目录：${info.configDir}`}>
             配置未能持久化
           </span>
         )}
-        <Button onClick={toggleTheme} title="切换浅色 / 深色主题">
-          {theme === "dark" ? "深色" : "浅色"}
+        <Button onClick={() => setAppearanceOpen(true)} title="外观、配色与布局">
+          外观
         </Button>
         <Button onClick={() => setAboutOpen(true)}>关于</Button>
       </span>

@@ -31,6 +31,7 @@ pub fn run() {
             commands::load_settings,
             commands::save_settings,
             commands::touch_recent_folder,
+            commands::read_background_image,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

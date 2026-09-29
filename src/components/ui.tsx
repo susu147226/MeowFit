@@ -6,14 +6,20 @@ export function Panel({
   right,
   children,
   className = "",
+  width,
 }: {
   title: string;
   right?: ReactNode;
   children: ReactNode;
   className?: string;
+  /** 由分隔条拖拽出来的列宽（个性化布局） */
+  width?: number;
 }) {
   return (
-    <section className={`flex min-h-0 flex-col overflow-hidden ${className}`}>
+    <section
+      className={`flex min-h-0 flex-col overflow-hidden ${className}`}
+      style={width === undefined ? undefined : { width }}
+    >
       <div className="panel-head">
         <h2 className="panel-title">{title}</h2>
         <div className="ml-auto flex items-center gap-2">{right}</div>

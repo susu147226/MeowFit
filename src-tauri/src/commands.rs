@@ -121,3 +121,46 @@ pub fn touch_recent_folder(state: State<'_, AppState>, folder: String) -> Result
     config::save_settings(&state.config_dir, &settings)?;
     Ok(settings)
 }
+
+/// 背景图大小上限；超过则拒绝，避免把巨大的数据塞进界面。
+pub const MAX_BACKGROUND_BYTES: u64 = 8 * 1024 * 1024;
+
+/// 读取本地背景图并编码为 data URL。
+///
+/// 仅用于**界面外观**（规范 6.14）：图片不进入素材处理流程、不写入任何日志、
+/// 也不会被上传——本程序不发起任何网络请求。
+#[tauri::command]
+pub fn read_background_image(path: String) -> Result<String, String> {
+    use base64::Engine as _;
+
+    let file = Path::new(&path);
+    let metadata = std::fs::metadata(file).map_err(|e| format!("无法读取背景图：{e}"))?;
+    if metadata.len() > MAX_BACKGROUND_BYTES {
+        return Err(format!(
+            "背景图过大（上限 {} MB），请换一张小一些的图片",
+            MAX_BACKGROUND_BYTES / 1024 / 1024
+        ));
+    }
+
+    let mime = match file
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
+        "bmp" => "image/bmp",
+        "avif" => "image/avif",
+        _ => return Err("仅支持 PNG / JPG / WebP / GIF / BMP / AVIF 作为背景图".into()),
+    };
+
+    let bytes = std::fs::read(file).map_err(|e| format!("无法读取背景图：{e}"))?;
+    Ok(format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(&bytes)
+    ))
+}

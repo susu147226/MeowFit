@@ -41,6 +41,10 @@ export const api = {
   saveSettings: (settings: Settings) => invoke<Settings>("save_settings", { settings }),
 
   touchRecentFolder: (folder: string) => invoke<Settings>("touch_recent_folder", { folder }),
+
+  /** 读取本地背景图并转成 data URL（仅用于界面外观，不上传） */
+  readBackgroundImage: (path: string) =>
+    invoke<string>("read_background_image", { path }),
 };
 
 /** 选择素材文件夹（本地路径，不经任何网络）。 */
@@ -52,5 +56,15 @@ export async function pickFolder(): Promise<string | null> {
 /** 选择输出目录（规范 6.5 的「每次任务由用户指定」方式）。 */
 export async function pickOutputFolder(): Promise<string | null> {
   const picked = await open({ directory: true, multiple: false, title: "选择输出目录" });
+  return typeof picked === "string" ? picked : null;
+}
+
+/** 选择界面背景图（规范 6.14，仅本地导入，不上传）。 */
+export async function pickBackgroundImage(): Promise<string | null> {
+  const picked = await open({
+    multiple: false,
+    title: "选择界面背景图",
+    filters: [{ name: "图片", extensions: ["png", "jpg", "jpeg", "webp", "gif", "bmp", "avif"] }],
+  });
   return typeof picked === "string" ? picked : null;
 }

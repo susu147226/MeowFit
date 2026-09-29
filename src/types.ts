@@ -185,10 +185,54 @@ export interface AppInfo {
   configPersistent: boolean;
 }
 
+/** 界面外观（规范 6.14 / 第七节） */
+export type ThemeMode = "system" | "light" | "dark";
+export type Density = "compact" | "standard" | "relaxed";
+
+export interface ThemeSettings {
+  /** 默认跟随系统外观 */
+  mode: ThemeMode;
+  /** 背景图绝对路径或 null（本地导入，不上传） */
+  backgroundImage: string | null;
+  /** 背景图透明度 0–100 */
+  backgroundOpacity: number;
+  /** 对比度不足时自动加蒙层 */
+  autoScrim: boolean;
+  /** 主题色 #RRGGBB */
+  accent: string;
+  density: Density;
+  /** 参数设置区宽度（px） */
+  sidebarWidth: number;
+  /** 预览与执行列宽度（px） */
+  previewWidth: number;
+}
+
+export const THEME_MODE_LABEL: Record<ThemeMode, string> = {
+  system: "跟随系统",
+  light: "浅色",
+  dark: "深色",
+};
+
+export const DENSITY_LABEL: Record<Density, string> = {
+  compact: "紧凑",
+  standard: "标准",
+  relaxed: "宽松",
+};
+
+/** 预设配色（规范第七节允许个性化配色） */
+export const ACCENT_PRESETS: { name: string; value: string }[] = [
+  { name: "奶油棕", value: "#A8763A" },
+  { name: "墨绿", value: "#2F6F4F" },
+  { name: "靛蓝", value: "#2F5FA8" },
+  { name: "莓紫", value: "#7A4A9E" },
+  { name: "砖红", value: "#B3452F" },
+  { name: "石墨", value: "#4A4E57" },
+];
+
 export interface Settings {
   version: number;
   language: string;
-  theme: { mode: "light" | "dark"; backgroundImage: string | null; backgroundOpacity: number };
+  theme: ThemeSettings;
   output: {
     directory: string;
     overwriteSource: boolean;

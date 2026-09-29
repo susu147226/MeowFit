@@ -387,7 +387,121 @@ fn settings_shape_matches_frontend() {
     assert_eq!(value["recentFolders"][0], json!("D:/a"));
 }
 
-/// 旧配置文件缺少 P2 新增字段时必须仍能加载（serde 默认值）。
+/// 外观设置的界面形状与默认值（规范 6.14 / 第七节）。
+#[test]
+fn appearance_settings_shape_and_defaults() {
+    // 界面发送的形状
+    let settings: meowfit_lib::config::Settings = serde_json::from_value(json!({
+        "version": 1,
+        "language": "zh-CN",
+        "theme": {
+            "mode": "system",
+            "backgroundImage": "D:/预览/bg.png",
+            "backgroundOpacity": 40,
+            "autoScrim": false,
+            "accent": "#2F6F4F",
+            "density": "compact",
+            "sidebarWidth": 300,
+            "previewWidth": 420
+        },
+        "output": {
+            "directory": "./output",
+            "overwriteSource": false,
+            "keepStructure": true,
+            "onConflict": "skip",
+            "backgroundFillColor": "#FFFFFF",
+            "stripRedundantMetadata": true,
+            "outputFormat": "keep"
+        },
+        "processing": {
+            "concurrency": 8,
+            "resample": "lanczos3",
+            "jpgQuality": 85,
+            "videoCrf": 23,
+            "videoEncoder": "h264",
+            "hardwareAccel": false,
+            "hdrTonemapToSdr": false,
+            "gifColors": 256,
+            "gifDither": false,
+            "upscaleWarnThreshold": 4,
+            "svgDpi": 96,
+            "svgSizeMode": "pixel"
+        },
+        "grouping": "prefix",
+        "recentFolders": []
+    }))
+    .expect("Settings 应接受界面发送的外观形状");
+
+    assert_eq!(settings.theme.mode, "system");
+    assert_eq!(settings.theme.background_opacity, 40);
+    assert!(!settings.theme.auto_scrim);
+    assert_eq!(settings.theme.density, "compact");
+    assert_eq!(settings.theme.preview_width, 420);
+
+    // 回写界面时字段名保持 camelCase
+    let value = serde_json::to_value(&settings).unwrap();
+    assert_eq!(value["theme"]["backgroundImage"], json!("D:/预览/bg.png"));
+    assert_eq!(value["theme"]["sidebarWidth"], json!(300));
+
+    // 默认外观：跟随系统、无背景图、标准密度
+    let fresh = meowfit_lib::config::Settings::default();
+    assert_eq!(fresh.theme.mode, "system", "外观默认必须跟随系统");
+    assert!(fresh.theme.background_image.is_none());
+    assert_eq!(fresh.theme.density, "standard");
+    assert!(fresh.theme.auto_scrim, "默认应开启自动加蒙层");
+    assert_eq!(fresh.theme.sidebar_width, 350);
+
+    // 旧配置缺字段时退回默认值而不是加载失败
+    let legacy: meowfit_lib::config::Settings = serde_json::from_value(json!({
+        "version": 1,
+        "language": "zh-CN",
+        "grouping": "prefix"
+    }))
+    .expect("缺字段的旧配置应能加载");
+    assert_eq!(
+        legacy.theme.mode, "system",
+        "旧配置没有 theme 段时，外观应落到默认的「跟随系统」"
+    );
+    assert_eq!(legacy.theme.density, "standard");
+}
+
+/// 背景图读取：不支持的扩展名必须被拒绝，且不会读取文件内容。
+#[test]
+fn background_image_rejects_unsupported_extension() {
+    let dir = std::env::temp_dir().join(format!("meowfit-bg-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("bg.txt");
+    std::fs::write(&path, b"not an image").unwrap();
+
+    let err = meowfit_lib::commands::read_background_image(path.to_string_lossy().into_owned())
+        .unwrap_err();
+    assert!(err.contains("仅支持"), "实际错误：{err}");
+
+    // 不存在的文件报读取失败而不是 panic
+    let missing = dir.join("nope.png");
+    assert!(
+        meowfit_lib::commands::read_background_image(missing.to_string_lossy().into_owned()).is_err()
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 背景图读取成功后应返回可直接渲染的 data URL。
+#[test]
+fn background_image_returns_data_url() {
+    let dir = std::env::temp_dir().join(format!("meowfit-bgok-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("bg.png");
+    image::RgbImage::from_pixel(4, 4, image::Rgb([10, 20, 30]))
+        .save(&path)
+        .unwrap();
+
+    let url = meowfit_lib::commands::read_background_image(path.to_string_lossy().into_owned())
+        .expect("支持的图片格式应能读取");
+    assert!(url.starts_with("data:image/png;base64,"), "实际：{}", &url[..40]);
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
 #[test]
 fn legacy_settings_without_p2_fields_still_loads() {
     let settings: meowfit_lib::config::Settings = serde_json::from_value(json!({

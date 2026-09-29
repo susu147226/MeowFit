@@ -89,20 +89,60 @@ pub fn resolve_config_dir() -> ConfigLocation {
 // settings.json —— 结构见规范 11.1
 // ---------------------------------------------------------------------------
 
+/// 界面外观（规范 6.14 / 第七节）。背景图仅服务界面外观，不进入素材处理流程。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThemeConfig {
+    /// system | light | dark；默认跟随系统外观
     pub mode: String,
+    /// 背景图绝对路径或 null（本地导入，不上传）
     pub background_image: Option<String>,
+    /// 背景图透明度 0–100
     pub background_opacity: u32,
+    /// 背景图导致对比度不足时自动加蒙层
+    #[serde(default = "default_true")]
+    pub auto_scrim: bool,
+    /// 主题色 #RRGGBB
+    #[serde(default = "default_accent")]
+    pub accent: String,
+    /// 界面密度：compact | standard | relaxed
+    #[serde(default = "default_density")]
+    pub density: String,
+    /// 右侧栏宽度（px）
+    #[serde(default = "default_sidebar_width")]
+    pub sidebar_width: u32,
+    /// 预览与执行列宽度（px）
+    #[serde(default = "default_sidebar_width")]
+    pub preview_width: u32,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_accent() -> String {
+    "#A8763A".into()
+}
+
+fn default_density() -> String {
+    "standard".into()
+}
+
+fn default_sidebar_width() -> u32 {
+    350
 }
 
 impl Default for ThemeConfig {
     fn default() -> Self {
         Self {
-            mode: "light".into(),
+            mode: "system".into(),
             background_image: None,
             background_opacity: 100,
+            auto_scrim: default_true(),
+            accent: default_accent(),
+            density: default_density(),
+            sidebar_width: default_sidebar_width(),
+            preview_width: default_sidebar_width(),
         }
     }
 }

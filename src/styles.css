@@ -108,6 +108,71 @@ body {
   scrollbar-color: var(--border-strong) transparent;
 }
 
+/* ---------- 界面密度（个性化布局，规范第七节）---------- */
+:root {
+  --pad-y: 12px;
+  --pad-x: 14px;
+  --row-y: 6px;
+}
+
+[data-density="compact"] {
+  --pad-y: 8px;
+  --pad-x: 10px;
+  --row-y: 3px;
+}
+
+[data-density="relaxed"] {
+  --pad-y: 16px;
+  --pad-x: 18px;
+  --row-y: 9px;
+}
+
+/* ---------- 背景图：面板转为半透明，让背景透出来（规范 6.14）---------- */
+[data-bg="on"] {
+  --bg: transparent;
+  --surface: rgb(255 255 255 / 0.82);
+  --surface-2: rgb(255 255 255 / 0.7);
+  --surface-3: rgb(255 255 255 / 0.55);
+  --border: rgb(0 0 0 / 0.12);
+  --border-strong: rgb(0 0 0 / 0.22);
+}
+
+[data-bg="on"][data-theme="dark"] {
+  --surface: rgb(31 30 35 / 0.82);
+  --surface-2: rgb(36 35 42 / 0.7);
+  --surface-3: rgb(43 42 50 / 0.6);
+  --border: rgb(255 255 255 / 0.14);
+  --border-strong: rgb(255 255 255 / 0.26);
+}
+
+.app-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
+/* 背景图对比度不足时压一层底色，保证前景文字可读 */
+.app-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: rgb(247 246 243 / 0.72);
+}
+
+[data-theme="dark"] .app-scrim {
+  background: rgb(23 22 26 / 0.74);
+}
+
+.app-content {
+  position: relative;
+  z-index: 2;
+}
+
 /* ============================================================
    共用组件样式：把重复的工具类收拢，保证各区视觉一致
    ============================================================ */
@@ -115,7 +180,8 @@ body {
 @layer components {
   /* 面板头：五个主分区共用 */
   .panel-head {
-    @apply flex shrink-0 items-center gap-2 border-b border-border bg-surface-2 px-3.5 py-2;
+    @apply flex shrink-0 items-center gap-2 border-b border-border bg-surface-2;
+    padding: calc(var(--pad-y) * 0.6) var(--pad-x);
   }
 
   .panel-title {
@@ -123,7 +189,8 @@ body {
   }
 
   .panel-body {
-    @apply min-h-0 flex-1 overflow-auto px-3.5 py-3;
+    @apply min-h-0 flex-1 overflow-auto;
+    padding: var(--pad-y) var(--pad-x);
   }
 
   .btn {
@@ -163,7 +230,8 @@ body {
   }
 
   .grid-table thead th {
-    @apply sticky top-0 z-10 bg-surface-2 px-3 py-1.5 text-left text-[11px] font-normal text-faint;
+    @apply sticky top-0 z-10 bg-surface-2 text-left text-[11px] font-normal text-faint;
+    padding: var(--row-y) var(--pad-x);
   }
 
   .grid-table tbody tr {
@@ -171,7 +239,8 @@ body {
   }
 
   .grid-table tbody td {
-    @apply px-3 py-1.5 align-middle;
+    @apply align-middle;
+    padding: var(--row-y) var(--pad-x);
   }
 
   .row-idle {
@@ -193,7 +262,8 @@ body {
 
   /* 折叠区（已跳过、未改动、结果明细） */
   .fold {
-    @apply border-t border-border px-3.5 py-2;
+    @apply border-t border-border;
+    padding: calc(var(--pad-y) * 0.7) var(--pad-x);
   }
 
   .fold > summary {

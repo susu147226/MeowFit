@@ -18,7 +18,13 @@ const ANCHORS: Anchor[] = [
   "bottomRight",
 ];
 
-export default function SettingsPanel({ className = "" }: { className?: string }) {
+export default function SettingsPanel({
+  className = "",
+  width,
+}: {
+  className?: string;
+  width?: number;
+}) {
   const scope = useStore((s) => s.scope);
   const groups = useStore((s) => s.groups);
   const files = useStore((s) => s.files);
@@ -110,7 +116,7 @@ export default function SettingsPanel({ className = "" }: { className?: string }
 
   if (files.length === 0) {
     return (
-      <Panel title="参数设置区" className={className}>
+      <Panel title="参数设置区" className={className} width={width}>
         <div className="panel-body space-y-3">
           <EmptyHint>
             <span>载入素材后在此设置缩放参数</span>
@@ -125,6 +131,7 @@ export default function SettingsPanel({ className = "" }: { className?: string }
     <Panel
       title="参数设置区"
       className={className}
+      width={width}
       right={
         <>
           <Button variant="ghost" onClick={clearScope}>

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import { api } from "./api";
+import { accentPalette } from "./lib/color";
 import { linkDimension } from "./lib/expression";
 import { dimsOf } from "./lib/svgDims";
 import type {
@@ -40,8 +41,14 @@ const MAX_LOGS = 500;
 interface MeowState {
   info: AppInfo | null;
   settings: Settings | null;
-  theme: "light" | "dark";
+  /** 解析后的实际外观（供渲染使用） */
+  resolvedTheme: "light" | "dark";
+  /** 背景图的 data URL；背景图仅服务界面外观（规范 6.14） */
+  backgroundUrl: string | null;
+  /** 已加载背景图的路径，用于避免每次外观变化都重新读取文件 */
+  backgroundPath: string | null;
   aboutOpen: boolean;
+  appearanceOpen: boolean;
 
   root: string | null;
   scanOptions: ScanOptions;
@@ -73,8 +80,10 @@ interface MeowState {
 
   init: () => Promise<void>;
   log: (level: LogEntry["level"], message: string) => void;
-  toggleTheme: () => void;
+  applyAppearance: () => Promise<void>;
+  setTheme: (patch: Partial<Settings["theme"]>) => Promise<void>;
   setAboutOpen: (open: boolean) => void;
+  setAppearanceOpen: (open: boolean) => void;
 
   setScanOptions: (patch: Partial<ScanOptions>) => void;
   scanFolder: (path: string, options?: Partial<ScanOptions>) => Promise<void>;
@@ -247,8 +256,11 @@ function coalesce(groups: Group[]): Group[] {
 export const useStore = create<MeowState>((set, get) => ({
   info: null,
   settings: null,
-  theme: "light",
+  resolvedTheme: "light",
+  backgroundUrl: null,
+  backgroundPath: null,
   aboutOpen: false,
+  appearanceOpen: false,
 
   root: null,
   scanOptions: { recursive: true, include: [], exclude: [] },
@@ -286,9 +298,9 @@ export const useStore = create<MeowState>((set, get) => ({
   init: async () => {
     try {
       const [info, settings] = await Promise.all([api.appInfo(), api.loadSettings()]);
-      const theme = settings.theme?.mode === "dark" ? "dark" : "light";
-      document.documentElement.dataset.theme = theme;
-      set({ info, settings, theme, grouping: settings.grouping });
+      set({ info, settings, grouping: settings.grouping });
+      await get().applyAppearance();
+
       get().log("INFO", `${info.name} v${info.version} 已启动`);
       get().log("INFO", `配置目录：${info.configDir}（${info.configMode}）`);
       if (!info.configPersistent) {
@@ -299,19 +311,61 @@ export const useStore = create<MeowState>((set, get) => ({
     }
   },
 
-  toggleTheme: () => {
-    const theme = get().theme === "dark" ? "light" : "dark";
-    document.documentElement.dataset.theme = theme;
-    set({ theme });
+  /** 把外观设置落到 DOM：主题模式、界面密度、主题色派生出的整组颜色。 */
+  applyAppearance: async () => {
     const settings = get().settings;
-    if (settings) {
-      const next: Settings = { ...settings, theme: { ...settings.theme, mode: theme } };
-      set({ settings: next });
-      api.saveSettings(next).catch((error) => get().log("ERROR", `保存主题失败：${String(error)}`));
+    if (!settings) return;
+
+    const mode = settings.theme.mode;
+    const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const resolved: "light" | "dark" = mode === "system" ? (systemDark ? "dark" : "light") : mode;
+
+    const root = document.documentElement;
+    root.dataset.theme = resolved;
+    root.dataset.density = settings.theme.density;
+
+    const palette = accentPalette(settings.theme.accent, resolved);
+    root.style.setProperty("--accent", palette.accent);
+    root.style.setProperty("--accent-hover", palette.hover);
+    root.style.setProperty("--accent-soft", palette.soft);
+    root.style.setProperty("--accent-contrast", palette.contrast);
+
+    set({ resolvedTheme: resolved });
+
+    // 背景图按路径读取一次，转成 data URL 供界面渲染。
+    // 路径没变就不重复读取——否则每次系统主题切换都会把整张图片重新读一遍并编码。
+    const path = settings.theme.backgroundImage;
+    if (!path) {
+      set({ backgroundUrl: null, backgroundPath: null });
+      return;
+    }
+    if (path === get().backgroundPath && get().backgroundUrl) return;
+
+    try {
+      set({ backgroundUrl: await api.readBackgroundImage(path), backgroundPath: path });
+    } catch (error) {
+      set({ backgroundUrl: null, backgroundPath: null });
+      get().log("WARN", `背景图无法加载：${String(error)}`);
+    }
+  },
+
+  /** 修改外观设置并持久化。 */
+  setTheme: async (patch) => {
+    const settings = get().settings;
+    if (!settings) return;
+    const next: Settings = { ...settings, theme: { ...settings.theme, ...patch } };
+    set({ settings: next });
+    await get().applyAppearance();
+    try {
+      await api.saveSettings(next);
+    } catch (error) {
+      get().log("ERROR", `保存外观设置失败：${String(error)}`);
     }
   },
 
   setAboutOpen: (open) => set({ aboutOpen: open }),
+
+  setAppearanceOpen: (open) => set({ appearanceOpen: open }),
 
   setScanOptions: (patch) => set((state) => ({ scanOptions: { ...state.scanOptions, ...patch } })),
 
