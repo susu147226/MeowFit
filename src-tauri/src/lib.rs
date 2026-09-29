@@ -3,6 +3,7 @@ pub mod commands;
 pub mod config;
 pub mod error;
 pub mod exec;
+pub mod ffmpeg;
 pub mod imaging;
 pub mod meta;
 pub mod model;
@@ -32,6 +33,7 @@ pub fn run() {
             commands::save_settings,
             commands::touch_recent_folder,
             commands::read_background_image,
+            commands::ffmpeg_self_check,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

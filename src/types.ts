@@ -83,6 +83,36 @@ export interface Plan {
   ok: boolean;
 }
 
+/** 视频附加信息（由 ffprobe 探测，规范 12.4） */
+export interface VideoInfo {
+  width: number;
+  height: number;
+  durationSec: number;
+  fps: number;
+  /** 显示矩阵旋转角度 */
+  rotation: number;
+  isHdr: boolean;
+  hasAudio: boolean;
+  hasSubtitle: boolean;
+  chapterCount: number;
+  pixFmt: string | null;
+}
+
+/** 视频编码器（规范 6.9：四种全部提供） */
+export type VideoCodec = "h264" | "h265" | "vp9" | "av1";
+/** 硬件加速实现（规范 6.9） */
+export type VideoAccel = "nvenc" | "qsv" | "amf";
+
+export interface VideoOptions {
+  codec: VideoCodec;
+  crf: number;
+  preset: string;
+  hardware: boolean;
+  accel: VideoAccel;
+  /** 默认保持 HDR 原样传递 */
+  tonemapToSdr: boolean;
+}
+
 export interface ScannedFile {
   id: string;
   path: string;
@@ -97,6 +127,8 @@ export interface ScannedFile {
   height: number | null;
   /** 仅对 SVG 有意义：根元素是否声明了 width / height（规范 10.5） */
   svgDeclared: boolean;
+  /** 视频附加信息，仅视频文件有 */
+  video?: VideoInfo;
   skipReason: string | null;
 }
 
@@ -149,6 +181,7 @@ export interface ExecOptions {
   keepStructure: boolean;
   onConflict: "skip" | "overwrite" | "rename";
   image: ImageOptions;
+  video: VideoOptions;
 }
 
 export interface FileOutcome {
@@ -172,6 +205,8 @@ export interface ExecReport {
   outputDir: string;
   outcomes: FileOutcome[];
   counts: OutcomeCounts;
+  /** 运行级说明（如硬件编码回退），供界面写入日志 */
+  notes: string[];
 }
 
 export interface AppInfo {
@@ -250,6 +285,7 @@ export interface Settings {
     videoCrf: number;
     videoEncoder: string;
     hardwareAccel: boolean;
+    videoAccel: VideoAccel;
     hdrTonemapToSdr: boolean;
     gifColors: number;
     gifDither: boolean;
@@ -274,6 +310,28 @@ export const FORMAT_LABEL: Record<OutputFormat, string> = {
   jpeg: "统一转为 JPEG",
   webp: "统一转为 WebP（无损）",
 };
+
+export const CODEC_LABEL: Record<VideoCodec, string> = {
+  h264: "H.264（兼容性最好）",
+  h265: "H.265 / HEVC（同画质更省体积）",
+  vp9: "VP9",
+  av1: "AV1（压缩率最高，编码较慢）",
+};
+
+export const ACCEL_LABEL: Record<VideoAccel, string> = {
+  nvenc: "NVIDIA NVENC",
+  qsv: "Intel QSV",
+  amf: "AMD AMF",
+};
+
+/** FFmpeg 自检结果（规范 12.5） */
+export interface FfmpegCheck {
+  ffmpegFound: boolean;
+  missingEncoders: string[];
+  missingFilters: string[];
+  missingHevcDecoder: boolean;
+  summary: string;
+}
 
 export const MODE_LABEL: Record<Mode, string> = {
   A: "A 等比缩放（居中）",

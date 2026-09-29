@@ -5,6 +5,7 @@ import type {
   AppInfo,
   ExecOptions,
   ExecReport,
+  FfmpegCheck,
   Group,
   Grouping,
   Plan,
@@ -45,6 +46,9 @@ export const api = {
   /** 读取本地背景图并转成 data URL（仅用于界面外观，不上传） */
   readBackgroundImage: (path: string) =>
     invoke<string>("read_background_image", { path }),
+
+  /** FFmpeg 可用性与构建自检（规范 12.5） */
+  ffmpegSelfCheck: () => invoke<FfmpegCheck>("ffmpeg_self_check"),
 };
 
 /** 选择素材文件夹（本地路径，不经任何网络）。 */

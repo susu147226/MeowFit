@@ -189,6 +189,9 @@ pub struct ProcessingConfig {
     pub video_crf: u32,
     pub video_encoder: String,
     pub hardware_accel: bool,
+    /// 硬件加速的厂商实现：nvenc | qsv | amf（规范 6.9）
+    #[serde(default = "default_video_accel")]
+    pub video_accel: String,
     pub hdr_tonemap_to_sdr: bool,
     pub gif_colors: u32,
     pub gif_dither: bool,
@@ -203,6 +206,10 @@ fn default_svg_size_mode() -> String {
     "pixel".into()
 }
 
+fn default_video_accel() -> String {
+    "nvenc".into()
+}
+
 impl Default for ProcessingConfig {
     fn default() -> Self {
         Self {
@@ -212,6 +219,7 @@ impl Default for ProcessingConfig {
             video_crf: 23,
             video_encoder: "h264".into(),
             hardware_accel: false,
+            video_accel: default_video_accel(),
             hdr_tonemap_to_sdr: false,
             gif_colors: 256,
             gif_dither: false,

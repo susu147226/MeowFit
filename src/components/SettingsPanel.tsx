@@ -4,6 +4,7 @@ import { parseDimension, parseScale } from "../lib/expression";
 import { referenceFor, useStore } from "../store";
 import { ANCHOR_LABEL, MODES, MODE_LABEL, type Anchor, type Mode, type Setting } from "../types";
 import ImageOptionsPanel from "./ImageOptionsPanel";
+import VideoOptionsPanel from "./VideoOptionsPanel";
 import { Button, Checkbox, EmptyHint, Field, Panel, Select, Tag, TextInput } from "./ui";
 
 const ANCHORS: Anchor[] = [
@@ -122,6 +123,7 @@ export default function SettingsPanel({
             <span>载入素材后在此设置缩放参数</span>
           </EmptyHint>
           <ImageOptionsPanel />
+          <VideoOptionsPanel />
         </div>
       </Panel>
     );
@@ -340,6 +342,7 @@ export default function SettingsPanel({
         )}
 
         <ImageOptionsPanel />
+        <VideoOptionsPanel />
       </div>
     </Panel>
   );

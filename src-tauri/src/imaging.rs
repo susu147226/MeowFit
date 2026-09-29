@@ -352,14 +352,6 @@ fn canvas_fill(out_ext: &str, opts: &ImageOptions) -> Rgba<u8> {
     }
 }
 
-/// P2 之后可写出的类型：静态位图与 SVG（动图与视频见 P4 / P3）。
-pub fn is_writable_by_this_stage(kind: crate::model::MediaKind) -> bool {
-    matches!(
-        kind,
-        crate::model::MediaKind::Raster | crate::model::MediaKind::Svg
-    )
-}
-
 /// JPEG 无 alpha 时的背景色说明，供界面提示（规范 6.8）。
 pub fn alpha_loss_note(format: OutputFormat) -> Option<&'static str> {
     format_lacks_alpha(format).then_some("该输出格式不支持透明通道，将以背景色填充")

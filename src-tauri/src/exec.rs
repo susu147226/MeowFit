@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, ErrorCode};
+use crate::ffmpeg;
 use crate::imaging;
 use crate::model::{Action, Plan, Status};
 use crate::scan;
@@ -21,6 +22,53 @@ pub struct SourceRef {
     /// 源文件绝对路径
     pub path: String,
     pub kind: crate::model::MediaKind,
+}
+
+/// 视频处理参数（规范 6.9）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoOptions {
+    /// h264 | h265 | vp9 | av1（规范 6.9：四种编码器全部提供）
+    #[serde(default = "default_codec")]
+    pub codec: String,
+    #[serde(default = "default_crf")]
+    pub crf: u32,
+    #[serde(default = "default_preset")]
+    pub preset: String,
+    #[serde(default)]
+    pub hardware: bool,
+    /// nvenc | qsv | amf
+    #[serde(default = "default_accel")]
+    pub accel: String,
+    /// 默认保持 HDR 原样传递；开启后色调映射到 SDR
+    #[serde(default)]
+    pub tonemap_to_sdr: bool,
+}
+
+fn default_codec() -> String {
+    "h264".into()
+}
+fn default_crf() -> u32 {
+    23
+}
+fn default_preset() -> String {
+    "medium".into()
+}
+fn default_accel() -> String {
+    "nvenc".into()
+}
+
+impl Default for VideoOptions {
+    fn default() -> Self {
+        Self {
+            codec: default_codec(),
+            crf: default_crf(),
+            preset: default_preset(),
+            hardware: false,
+            accel: default_accel(),
+            tonemap_to_sdr: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,6 +85,9 @@ pub struct ExecOptions {
     /// 图片处理参数：重采样、质量、输出格式、元数据开关、背景色
     #[serde(default)]
     pub image: imaging::ImageOptions,
+    /// 视频处理参数：编码器、质量、硬件加速、HDR 策略
+    #[serde(default)]
+    pub video: VideoOptions,
 }
 
 fn default_true() -> bool {
@@ -53,6 +104,7 @@ impl Default for ExecOptions {
             keep_structure: true,
             on_conflict: default_conflict(),
             image: imaging::ImageOptions::default(),
+            video: VideoOptions::default(),
         }
     }
 }
@@ -88,6 +140,91 @@ pub struct ExecReport {
     pub output_dir: String,
     pub outcomes: Vec<FileOutcome>,
     pub counts: OutcomeCounts,
+    /// 运行级说明（例如硬件编码回退），供界面写入日志
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+/// 本阶段能够写出的素材类型（动图见 P4）。
+fn supported_kind(kind: crate::model::MediaKind) -> bool {
+    matches!(
+        kind,
+        crate::model::MediaKind::Raster
+            | crate::model::MediaKind::Svg
+            | crate::model::MediaKind::Video
+    )
+}
+
+/// 用 FFmpeg 编码一个视频；硬件编码失败时自动回退软件编码（规范 6.9）。
+fn encode_video(
+    paths: Option<&ffmpeg::FfmpegPaths>,
+    source: &str,
+    out: &Path,
+    target: &crate::model::Computed,
+    opts: &VideoOptions,
+    notes: &mut Vec<String>,
+) -> Result<u64, AppError> {
+    let paths = paths.ok_or_else(|| {
+        AppError::new(
+            ErrorCode::FfmpegMissing,
+            "找不到 FFmpeg，无法处理视频。请把 ffmpeg.exe 与 ffprobe.exe 放到 \
+             src-tauri/resources/ffmpeg/win-x64/（打包后为 程序目录/resources/ffmpeg/win-x64/）。"
+                .to_string(),
+        )
+    })?;
+
+    let out_ext = out
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_string();
+
+    let hardware = if opts.hardware {
+        ffmpeg::hardware_encoder(&opts.codec, &opts.accel)
+    } else {
+        None
+    };
+    if opts.hardware && hardware.is_none() {
+        notes.push(format!(
+            "{} 没有 {} 硬件实现，已直接使用软件编码 {}",
+            opts.codec.to_uppercase(),
+            opts.accel.to_uppercase(),
+            ffmpeg::software_encoder(&opts.codec)
+        ));
+    }
+
+    let mut job = ffmpeg::VideoJob {
+        input: source.to_string(),
+        output: out.to_string_lossy().into_owned(),
+        width: target.width,
+        height: target.height,
+        encoder: hardware
+            .unwrap_or_else(|| ffmpeg::software_encoder(&opts.codec))
+            .to_string(),
+        crf: opts.crf,
+        preset: opts.preset.clone(),
+        hardware: hardware.is_some(),
+        tonemap_to_sdr: opts.tonemap_to_sdr,
+        container: ffmpeg::Container::from_ext(&out_ext),
+        video_bitrate_k: None,
+        fps: None,
+    };
+
+    match ffmpeg::run_ffmpeg(paths, &ffmpeg::build_args(&job)) {
+        Ok(()) => Ok(fs::metadata(out).map(|m| m.len()).unwrap_or(0)),
+        Err(err) if job.hardware => {
+            // 编码失败必须自动回退软件编码，并在日志中留下回退记录
+            let software = ffmpeg::software_encoder(&opts.codec);
+            notes.push(format!(
+                "硬件编码 {} 失败（{}），已回退到软件编码 {}",
+                job.encoder, err.message, software
+            ));
+            job = ffmpeg::fallback_job(&job, &opts.codec);
+            ffmpeg::run_ffmpeg(paths, &ffmpeg::build_args(&job))?;
+            Ok(fs::metadata(out).map(|m| m.len()).unwrap_or(0))
+        }
+        Err(err) => Err(err),
+    }
 }
 
 /// 探测目录可写性：创建目录并写入再删除一个临时文件（规范 4.1 的判定方式）。
@@ -195,6 +332,10 @@ pub fn execute(
 ) -> Result<ExecReport, AppError> {
     let output_root = resolve_output_dir(root, opts)?;
 
+    // FFmpeg 路径解析一次，供本次执行中所有视频复用
+    let ffmpeg_paths = ffmpeg::resolve_paths().ok();
+    let mut notes: Vec<String> = Vec::new();
+
     let lookup: std::collections::HashMap<&str, &SourceRef> =
         sources.iter().map(|s| (s.id.as_str(), s)).collect();
 
@@ -252,7 +393,7 @@ pub fn execute(
             None => continue,
         };
 
-        if !imaging::is_writable_by_this_stage(source.kind) {
+        if !supported_kind(source.kind) {
             outcomes.push(FileOutcome {
                 id: entry.id.clone(),
                 status: Status::Skipped,
@@ -269,7 +410,12 @@ pub fn execute(
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_ascii_lowercase();
-        let out_ext = imaging::resolve_output_ext(&src_ext, opts.image.format);
+        // 视频保持原容器（P3 不做跨容器转换）；图片与 SVG 按格式设置转换
+        let out_ext = if source.kind == crate::model::MediaKind::Video {
+            src_ext.clone()
+        } else {
+            imaging::resolve_output_ext(&src_ext, opts.image.format)
+        };
         let wanted = output_path_for(&output_root, &entry.id, opts.keep_structure, &out_ext);
 
         // 绝不覆盖源文件（规范第八节）
@@ -300,13 +446,20 @@ pub fn execute(
             }
         };
 
-        match imaging::write_image(
-            Path::new(&source.path),
-            &final_path,
-            &target,
-            mode,
-            &opts.image,
-        ) {
+        let result = if source.kind == crate::model::MediaKind::Video {
+            encode_video(
+                ffmpeg_paths.as_ref(),
+                &source.path,
+                &final_path,
+                &target,
+                &opts.video,
+                &mut notes,
+            )
+        } else {
+            imaging::write_image(Path::new(&source.path), &final_path, &target, mode, &opts.image)
+        };
+
+        match result {
             Ok(new_size) => outcomes.push(FileOutcome {
                 id: entry.id.clone(),
                 status: Status::Success,
@@ -343,6 +496,7 @@ pub fn execute(
         output_dir: output_root.to_string_lossy().into_owned(),
         outcomes,
         counts,
+        notes,
     })
 }
 

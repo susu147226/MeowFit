@@ -113,6 +113,30 @@ pub fn save_settings(
     Ok(settings)
 }
 
+/// FFmpeg 可用性与构建自检（规范 12.5）。
+///
+/// 找不到二进制时如实返回 `ffmpegFound: false` 与缺失清单，不抛错——
+/// 界面需要据此提示用户，而不是让整个程序不可用。
+#[tauri::command]
+pub fn ffmpeg_self_check() -> crate::ffmpeg::SelfCheckReport {
+    match crate::ffmpeg::resolve_paths() {
+        Ok(paths) => crate::ffmpeg::self_check(&paths),
+        Err(err) => crate::ffmpeg::SelfCheckReport {
+            ffmpeg_found: false,
+            missing_encoders: crate::ffmpeg::REQUIRED_ENCODERS
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect(),
+            missing_filters: crate::ffmpeg::REQUIRED_FILTERS
+                .iter()
+                .map(|s| (*s).to_string())
+                .collect(),
+            missing_hevc_decoder: true,
+            summary: err.message,
+        },
+    }
+}
+
 /// 把文件夹记入「最近使用的文件夹」（最多 10 条）并持久化。
 #[tauri::command]
 pub fn touch_recent_folder(state: State<'_, AppState>, folder: String) -> Result<Settings, String> {

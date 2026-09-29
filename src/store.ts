@@ -7,6 +7,7 @@ import { dimsOf } from "./lib/svgDims";
 import type {
   AppInfo,
   ExecReport,
+  FfmpegCheck,
   Group,
   GroupTierState,
   Grouping,
@@ -19,6 +20,7 @@ import type {
   Setting,
   Settings,
   SourceRef,
+  VideoCodec,
 } from "./types";
 
 export interface LogEntry {
@@ -76,6 +78,8 @@ interface MeowState {
   plan: Plan | null;
   report: ExecReport | null;
   running: boolean;
+  /** FFmpeg 可用性自检结果（规范 12.5） */
+  ffmpegCheck: FfmpegCheck | null;
   logs: LogEntry[];
 
   init: () => Promise<void>;
@@ -109,6 +113,7 @@ interface MeowState {
 
   refreshPlan: () => Promise<void>;
   execute: () => Promise<void>;
+  checkFfmpeg: () => Promise<void>;
 }
 
 type StateSlice = Pick<
@@ -286,6 +291,7 @@ export const useStore = create<MeowState>((set, get) => ({
   plan: null,
   report: null,
   running: false,
+  ffmpegCheck: null,
   logs: [],
 
   log: (level, message) => {
@@ -306,6 +312,8 @@ export const useStore = create<MeowState>((set, get) => ({
       if (!info.configPersistent) {
         get().log("WARN", "配置未能持久化：当前环境不可写，已降级到临时目录");
       }
+
+      await get().checkFfmpeg();
     } catch (error) {
       get().log("ERROR", `初始化失败：${String(error)}`);
     }
@@ -595,6 +603,30 @@ export const useStore = create<MeowState>((set, get) => ({
     }
   },
 
+  /** FFmpeg 自检：缺失的组件必须**告知用户**，而不是删掉对应功能后静默发布（规范 12.5）。 */
+  checkFfmpeg: async () => {
+    try {
+      const check = await api.ffmpegSelfCheck();
+      set({ ffmpegCheck: check });
+      if (!check.ffmpegFound) {
+        get().log("WARN", "未找到 FFmpeg：视频与动图将无法处理。请按 README 放置 ffmpeg.exe 与 ffprobe.exe");
+        return;
+      }
+      const missing = [
+        ...check.missingEncoders.map((e) => `编码器 ${e}`),
+        ...check.missingFilters.map((f) => `滤镜 ${f}`),
+        ...(check.missingHevcDecoder ? ["HEVC 解码器"] : []),
+      ];
+      if (missing.length > 0) {
+        get().log("WARN", `FFmpeg 构建缺少：${missing.join("、")}`);
+      } else {
+        get().log("INFO", "FFmpeg 自检通过：所需编码器、滤镜与解码器齐备");
+      }
+    } catch (error) {
+      get().log("WARN", `FFmpeg 自检失败：${String(error)}`);
+    }
+  },
+
   execute: async () => {
     const state = get();
     if (!state.root) return;
@@ -620,6 +652,14 @@ export const useStore = create<MeowState>((set, get) => ({
           keepAllMetadata: !(state.settings?.output.stripRedundantMetadata ?? true),
           backgroundFill: state.settings?.output.backgroundFillColor ?? "#FFFFFF",
         },
+        video: {
+          codec: (state.settings?.processing.videoEncoder ?? "h264") as VideoCodec,
+          crf: state.settings?.processing.videoCrf ?? 23,
+          preset: "medium",
+          hardware: state.settings?.processing.hardwareAccel ?? false,
+          accel: state.settings?.processing.videoAccel ?? ("nvenc" as const),
+          tonemapToSdr: state.settings?.processing.hdrTonemapToSdr ?? false,
+        },
       };
 
       get().log("INFO", `开始执行：共 ${request.files.length} 个素材`);
@@ -632,6 +672,8 @@ export const useStore = create<MeowState>((set, get) => ({
         `执行完成：成功 ${c.success}、未改动 ${c.unchanged}、已跳过 ${c.skipped}、失败 ${c.failed}`,
       );
       get().log("INFO", `输出目录：${report.outputDir}`);
+      // 运行级说明，例如硬件编码失败后的回退（规范 6.9：回退行为须记录在日志中）
+      for (const note of report.notes ?? []) get().log("WARN", note);
       if (c.failed > 0) {
         get().log("WARN", `有 ${c.failed} 个素材处理失败，详情见结果列表`);
       }
