@@ -6,6 +6,8 @@ import { useStore } from "../store";
 import { ANCHOR_LABEL, MODES, MODE_LABEL, type Anchor, type Mode, type Setting } from "../types";
 import AnimationOptionsPanel from "./AnimationOptionsPanel";
 import ImageOptionsPanel from "./ImageOptionsPanel";
+import OutputSettingsPanel from "./OutputSettingsPanel";
+import PresetBar from "./PresetBar";
 import VideoOptionsPanel from "./VideoOptionsPanel";
 import { Button, Checkbox, EmptyHint, Field, Panel, Select, Tag, TextInput } from "./ui";
 
@@ -167,6 +169,8 @@ export default function SettingsPanel({
           <ImageOptionsPanel />
           <VideoOptionsPanel />
           <AnimationOptionsPanel />
+          <OutputSettingsPanel />
+        <OutputSettingsPanel />
         </div>
       </Panel>
     );
@@ -247,6 +251,8 @@ export default function SettingsPanel({
             />
           </Field>
         )}
+
+        <PresetBar current={scopeSetting} />
 
         {/* 缩放方式 A–G 单选 */}
         <div className="space-y-1">
@@ -445,6 +451,7 @@ export default function SettingsPanel({
         <ImageOptionsPanel />
         <VideoOptionsPanel />
         <AnimationOptionsPanel />
+        <OutputSettingsPanel />
       </div>
     </Panel>
   );

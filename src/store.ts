@@ -12,6 +12,8 @@ import type {
   GroupTierState,
   Grouping,
   Plan,
+  Preset,
+  ProgressEvent,
   ScanOptions,
   ScannedFile,
   Setting,
@@ -66,6 +68,23 @@ interface MeowState {
   animationToVideo: "none" | "mp4" | "webm";
   /** 动图目标体积（字节）；null 表示不限制 */
   animationTargetBytes: number | null;
+  /** 输出目录方式（规范 6.5） */
+  outputMode: "sibling" | "user";
+  /** 用户指定的输出目录 */
+  userOutputDir: string | null;
+  /** 干跑 / 备份 / 增量 / 输出校验 */
+  dryRun: boolean;
+  backup: boolean;
+  skipUnchanged: boolean;
+  verifyOutput: boolean;
+  /** 执行进度 */
+  progress: ProgressEvent | null;
+  /** 目标磁盘剩余空间（字节） */
+  diskFree: number | null;
+  /** 覆盖源文件的二次确认 */
+  overwriteConfirmOpen: boolean;
+  /** 预设列表（规范 6.12） */
+  presets: Preset[];
 
   scope: Scope;
   selectedIds: string[];
@@ -101,6 +120,21 @@ interface MeowState {
   setBasis: (basis: Basis) => void;
   setAnimationToVideo: (value: "none" | "mp4" | "webm") => void;
   setAnimationTargetBytes: (value: number | null) => void;
+  setOutputMode: (mode: "sibling" | "user") => void;
+  setUserOutputDir: (dir: string) => void;
+  setDryRun: (value: boolean) => void;
+  setBackup: (value: boolean) => void;
+  setSkipUnchanged: (value: boolean) => void;
+  setVerifyOutput: (value: boolean) => void;
+  setProgress: (progress: ProgressEvent | null) => void;
+  cancelExecution: () => Promise<void>;
+  setOverwriteConfirmOpen: (open: boolean) => void;
+  confirmOverwriteAndRun: () => Promise<void>;
+  refreshDiskFree: () => Promise<void>;
+  refreshPresets: () => Promise<void>;
+  saveCurrentAsPreset: (name: string) => Promise<void>;
+  renamePreset: (id: string, name: string) => Promise<void>;
+  removePreset: (id: string) => Promise<void>;
   setProcessing: (patch: Partial<Settings["processing"]>) => void;
   setOutput: (patch: Partial<Settings["output"]>) => void;
 
@@ -147,6 +181,16 @@ export const useStore = create<MeowState>((set, get) => ({
   basis: "selection",
   animationToVideo: "none",
   animationTargetBytes: null,
+  outputMode: "sibling",
+  userOutputDir: null,
+  dryRun: false,
+  backup: false,
+  skipUnchanged: false,
+  verifyOutput: true,
+  progress: null,
+  diskFree: null,
+  overwriteConfirmOpen: false,
+  presets: [],
 
   scope: { type: "global" },
   selectedIds: [],
@@ -190,6 +234,7 @@ export const useStore = create<MeowState>((set, get) => ({
       }
 
       await get().checkFfmpeg();
+      await get().refreshPresets();
     } catch (error) {
       get().log("ERROR", `初始化失败：${String(error)}`);
     }
@@ -443,6 +488,94 @@ export const useStore = create<MeowState>((set, get) => ({
 
   setAnimationTargetBytes: (value) => set({ animationTargetBytes: value }),
 
+  setOutputMode: (mode) => set({ outputMode: mode }),
+  setUserOutputDir: (dir) => set({ userOutputDir: dir }),
+  setDryRun: (value) => set({ dryRun: value }),
+  setBackup: (value) => set({ backup: value }),
+  setSkipUnchanged: (value) => set({ skipUnchanged: value }),
+  setVerifyOutput: (value) => set({ verifyOutput: value }),
+  setProgress: (progress) => set({ progress }),
+  setOverwriteConfirmOpen: (open) => set({ overwriteConfirmOpen: open }),
+
+  cancelExecution: async () => {
+    try {
+      await api.cancelExecution();
+      get().log("WARN", "已请求取消：已完成的保留，未开始的停止");
+    } catch (error) {
+      get().log("ERROR", `取消失败：${String(error)}`);
+    }
+  },
+
+  /// 覆盖源文件前的二次确认：确认后再真正执行
+  confirmOverwriteAndRun: async () => {
+    set({ overwriteConfirmOpen: false });
+    await get().execute();
+  },
+
+  refreshPresets: async () => {
+    try {
+      const store = await api.loadPresets();
+      set({ presets: store.presets });
+    } catch (error) {
+      get().log("ERROR", `读取预设失败：${String(error)}`);
+    }
+  },
+
+  /// 把当前作用域的设置存成预设
+  saveCurrentAsPreset: async (name) => {
+    const state = get();
+    let current: Setting | null = null;
+    if (state.scope.type === "global") {
+      current = state.globalSetting;
+    } else if (state.scope.type === "group") {
+      const tier = state.groupTiers[state.scope.name];
+      current = tier && tier.kind === "explicit" ? tier.setting : null;
+    } else {
+      current = state.fileSettings[state.scope.id] ?? null;
+    }
+    if (!current) {
+      get().log("WARN", "当前作用域还没有设置，无法保存为预设");
+      return;
+    }
+    try {
+      const store = await api.addPreset(name, current);
+      set({ presets: store.presets });
+      get().log("INFO", `已保存预设「${name}」`);
+    } catch (error) {
+      get().log("ERROR", `保存预设失败：${String(error)}`);
+    }
+  },
+
+  renamePreset: async (id, name) => {
+    try {
+      set({ presets: (await api.renamePreset(id, name)).presets });
+    } catch (error) {
+      get().log("ERROR", `重命名预设失败：${String(error)}`);
+    }
+  },
+
+  removePreset: async (id) => {
+    try {
+      set({ presets: (await api.removePreset(id)).presets });
+      get().log("INFO", "预设已删除（内置预设为隐藏）");
+    } catch (error) {
+      get().log("ERROR", `删除预设失败：${String(error)}`);
+    }
+  },
+
+  refreshDiskFree: async () => {
+    const dir = get().outputMode === "user" ? get().userOutputDir : get().outputDir;
+    if (!dir) {
+      set({ diskFree: null });
+      return;
+    }
+    try {
+      set({ diskFree: await api.diskFreeSpace(dir) });
+    } catch {
+      set({ diskFree: null });
+    }
+  },
+
   setProcessing: (patch) => {
     const settings = get().settings;
     if (!settings) return;
@@ -536,25 +669,43 @@ export const useStore = create<MeowState>((set, get) => ({
       return;
     }
 
-    set({ running: true, report: null });
+    // 覆盖源文件是破坏性操作，必须先二次确认（规范 6.5 / 8）
+    if ((state.settings?.output.overwriteSource ?? false) && !state.overwriteConfirmOpen) {
+      set({ overwriteConfirmOpen: true });
+      return;
+    }
+
+    set({ running: true, report: null, progress: null });
     try {
       const { request, sources } = buildRequest(state);
+      const userDir = state.outputMode === "user" ? state.userOutputDir : null;
       const options = {
-        outputDir: null,
+        outputDir: userDir,
         keepStructure: state.settings?.output.keepStructure ?? true,
         onConflict: state.settings?.output.onConflict ?? ("skip" as const),
+        dryRun: state.dryRun,
+        backup: state.backup,
+        overwriteSource: state.settings?.output.overwriteSource ?? false,
+        verifyOutput: state.verifyOutput,
+        skipUnchanged: state.skipUnchanged,
+        configDir: state.info?.configDir ?? null,
+        animation: {
+          colors: state.settings?.processing.gifColors ?? 256,
+          dither: state.settings?.processing.gifDither ?? false,
+          toVideo: state.animationToVideo,
+          targetBytes: state.animationTargetBytes,
+        },
+        // 图片目标体积（KB → 字节）
         image: {
           resample: state.settings?.processing.resample ?? ("lanczos3" as const),
           quality: state.settings?.processing.jpgQuality ?? 85,
           format: state.settings?.output.outputFormat ?? ("keep" as const),
           keepAllMetadata: !(state.settings?.output.stripRedundantMetadata ?? true),
           backgroundFill: state.settings?.output.backgroundFillColor ?? "#FFFFFF",
-        },
-        animation: {
-          colors: state.settings?.processing.gifColors ?? 256,
-          dither: state.settings?.processing.gifDither ?? false,
-          toVideo: state.animationToVideo,
-          targetBytes: state.animationTargetBytes,
+          targetBytes:
+            state.settings?.output.targetBytesKb != null
+              ? state.settings.output.targetBytesKb * 1024
+              : null,
         },
         video: {
           codec: (state.settings?.processing.videoEncoder ?? "h264") as VideoCodec,
@@ -568,7 +719,7 @@ export const useStore = create<MeowState>((set, get) => ({
 
       get().log("INFO", `开始执行：共 ${request.files.length} 个素材`);
       const report = await api.executePlan(request, sources, options, state.root);
-      set({ report, running: false });
+      set({ report, running: false, progress: null });
 
       const c = report.counts;
       get().log(

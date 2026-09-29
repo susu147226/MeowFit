@@ -6,6 +6,7 @@ import AppearanceDialog from "./components/AppearanceDialog";
 import FileList from "./components/FileList";
 import GroupingConfirm from "./components/GroupingConfirm";
 import LogPanel from "./components/LogPanel";
+import OverwriteConfirm from "./components/OverwriteConfirm";
 import PreviewPanel from "./components/PreviewPanel";
 import RunPanel from "./components/RunPanel";
 import ScanBar from "./components/ScanBar";
@@ -316,6 +317,7 @@ export default function App() {
       {aboutOpen && <AboutDialog />}
       {appearanceOpen && <AppearanceDialog />}
       <GroupingConfirm />
+      <OverwriteConfirm />
     </>
   );
 }

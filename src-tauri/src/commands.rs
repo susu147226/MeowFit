@@ -16,7 +16,8 @@ use crate::algo::grouping::{group_files, Group, GroupableFile};
 use crate::algo::plan::build_plan;
 use crate::config::{self, ConfigMode, Settings};
 use crate::exec::{self, ExecOptions, ExecReport, SourceRef};
-use crate::model::{Grouping, Plan, PlanRequest};
+use crate::model::{Grouping, Plan, PlanRequest, Setting};
+use crate::presets::{self, PresetStore};
 use crate::scan::{self, ScanOptions, ScanResult};
 
 pub const APP_NAME: &str = "喵尺 MeowFit";
@@ -184,6 +185,78 @@ pub fn run_plan(
         cancel,
     )
     .map_err(|e| format!("{} {}", e.code.as_str(), e.message))
+}
+
+/// 读取预设（内置预设始终齐全，规范 6.12）。
+#[tauri::command]
+pub fn load_presets(state: State<'_, AppState>) -> PresetStore {
+    presets::load(&state.config_dir)
+}
+
+/// 新增一个用户预设。
+#[tauri::command]
+pub fn add_preset(
+    state: State<'_, AppState>,
+    name: String,
+    setting: Setting,
+) -> Result<PresetStore, String> {
+    let mut store = presets::load(&state.config_dir);
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    presets::add_user(&mut store, &name, setting, seed);
+    presets::save(&state.config_dir, &store)?;
+    Ok(store)
+}
+
+/// 重命名预设。
+#[tauri::command]
+pub fn rename_preset(
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+) -> Result<PresetStore, String> {
+    let mut store = presets::load(&state.config_dir);
+    match store.presets.iter_mut().find(|p| p.id == id) {
+        Some(preset) => preset.name = name,
+        None => return Err("找不到该预设".into()),
+    }
+    presets::save(&state.config_dir, &store)?;
+    Ok(store)
+}
+
+/// 删除预设：内置预设只能隐藏，不能删除（规范 6.12）。
+#[tauri::command]
+pub fn remove_preset(state: State<'_, AppState>, id: String) -> Result<PresetStore, String> {
+    let mut store = presets::load(&state.config_dir);
+    presets::remove_or_hide(&mut store, &id)?;
+    presets::save(&state.config_dir, &store)?;
+    Ok(store)
+}
+
+/// 导出预设为 JSON 文本（自带校验，便于用户自行编辑与传递）。
+#[tauri::command]
+pub fn export_presets(state: State<'_, AppState>) -> Result<String, String> {
+    serde_json::to_string_pretty(&presets::load(&state.config_dir))
+        .map_err(|e| format!("导出失败：{e}"))
+}
+
+/// 从 JSON 文本导入预设，与现有预设合并（同 id 覆盖）。
+#[tauri::command]
+pub fn import_presets(state: State<'_, AppState>, json: String) -> Result<PresetStore, String> {
+    let incoming: PresetStore =
+        serde_json::from_str(&json).map_err(|e| format!("预设文件无法解析：{e}"))?;
+    let mut store = presets::load(&state.config_dir);
+    for preset in incoming.presets {
+        match store.presets.iter_mut().find(|p| p.id == preset.id) {
+            Some(existing) => *existing = preset,
+            None => store.presets.push(preset),
+        }
+    }
+    store = store.normalize();
+    presets::save(&state.config_dir, &store)?;
+    Ok(store)
 }
 
 /// 目标路径所在磁盘的可用空间（字节），供磁盘空间预检使用（规范 6.6）。

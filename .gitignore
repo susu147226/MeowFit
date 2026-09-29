@@ -38,6 +38,7 @@ src-tauri/resources/ffmpeg/**/*.dll
 /build/
 
 # ---------- 打包产物 ----------
+/artifacts/
 *.msi
 *.nsis.zip
 

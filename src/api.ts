@@ -10,6 +10,8 @@ import type {
   Grouping,
   Plan,
   PlanRequest,
+  PresetStore,
+  Setting,
   ScanOptions,
   ScanResult,
   Settings,
@@ -49,6 +51,22 @@ export const api = {
 
   /** FFmpeg 可用性与构建自检（规范 12.5） */
   ffmpegSelfCheck: () => invoke<FfmpegCheck>("ffmpeg_self_check"),
+
+  /** 取消当前执行（规范 6.7） */
+  cancelExecution: () => invoke<void>("cancel_execute"),
+
+  /** 目标磁盘剩余空间（规范 6.6） */
+  diskFreeSpace: (path: string) => invoke<number>("disk_free_space", { path }),
+
+  /** 预设（规范 6.12） */
+  loadPresets: () => invoke<PresetStore>("load_presets"),
+  addPreset: (name: string, setting: Setting) =>
+    invoke<PresetStore>("add_preset", { name, setting }),
+  renamePreset: (id: string, name: string) =>
+    invoke<PresetStore>("rename_preset", { id, name }),
+  removePreset: (id: string) => invoke<PresetStore>("remove_preset", { id }),
+  exportPresets: () => invoke<string>("export_presets"),
+  importPresets: (json: string) => invoke<PresetStore>("import_presets", { json }),
 };
 
 /** 选择素材文件夹（本地路径，不经任何网络）。 */

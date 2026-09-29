@@ -210,6 +210,18 @@ export interface ExecOptions {
   image: ImageOptions;
   video: VideoOptions;
   animation: AnimationOptions;
+  /** 干跑：只计算与预览，不写出文件（规范 6.5） */
+  dryRun: boolean;
+  /** 处理前备份源文件（规范 6.5） */
+  backup: boolean;
+  /** 覆盖源文件（规范 6.5，默认关闭） */
+  overwriteSource: boolean;
+  /** 写出后校验（规范 6.7） */
+  verifyOutput: boolean;
+  /** 增量处理：跳过未变化的素材（规范 6.13） */
+  skipUnchanged: boolean;
+  /** 配置目录，供后端写日志与增量索引 */
+  configDir?: string | null;
 }
 
 export interface FileOutcome {
@@ -235,6 +247,36 @@ export interface ExecReport {
   counts: OutcomeCounts;
   /** 运行级说明（如硬件编码回退），供界面写入日志 */
   notes: string[];
+  /** 本次是否为干跑（未写出任何文件） */
+  dryRun: boolean;
+  /** 报告文件路径 */
+  reportCsv?: string | null;
+  reportJson?: string | null;
+}
+
+/** 执行进度事件（规范 6.7） */
+export interface ProgressEvent {
+  done: number;
+  total: number;
+  current: string;
+}
+
+/** 输出目录方式（规范 6.5） */
+export type OutputMode = "sibling" | "user";
+
+/** 预设（规范 6.12）。id 内置为 builtin-*，用户预设为 user-* */
+export interface Preset {
+  id: string;
+  name: string;
+  builtin: boolean;
+  /** 内置预设可隐藏但不可删除 */
+  hidden: boolean;
+  setting: Setting;
+}
+
+export interface PresetStore {
+  version: number;
+  presets: Preset[];
 }
 
 export interface AppInfo {
@@ -335,6 +377,8 @@ export interface Settings {
     /** true = 剥离缩略图等冗余元数据（规范 11.1 默认值） */
     stripRedundantMetadata: boolean;
     outputFormat: OutputFormat;
+    /** 图片目标体积上限（KB）；null 表示不限制（规范 6.11） */
+    targetBytesKb?: number | null;
   };
   processing: {
     concurrency: number;

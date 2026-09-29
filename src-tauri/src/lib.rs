@@ -10,6 +10,7 @@ pub mod incremental;
 pub mod logging;
 pub mod meta;
 pub mod model;
+pub mod presets;
 pub mod report;
 pub mod scan;
 pub mod svg;
@@ -41,6 +42,12 @@ pub fn run() {
             commands::ffmpeg_self_check,
             commands::cancel_execute,
             commands::disk_free_space,
+            commands::load_presets,
+            commands::add_preset,
+            commands::rename_preset,
+            commands::remove_preset,
+            commands::export_presets,
+            commands::import_presets,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
