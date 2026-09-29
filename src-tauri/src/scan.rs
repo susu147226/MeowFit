@@ -333,8 +333,25 @@ fn probe(
     match kind {
         None => skipped(format!("不支持的格式：.{ext}")),
         Some(MediaKind::Raster) => {
+            // AVIF / HEIC / HEIF 由 FFmpeg 处理（规范 5.4：image crate 的 avif 特性未启用时回退 FFmpeg）
             if FFMPEG_RASTER_EXTS.contains(&ext) {
-                return skipped(format!("该格式需由 FFmpeg 处理，将在后续阶段接入：.{ext}"));
+                let Some(paths) = ffmpeg_paths else {
+                    return skipped(format!("缺少 FFmpeg，无法探测 .{ext}（需 ffmpeg.exe 与 ffprobe.exe）"));
+                };
+                return match crate::ffmpeg::probe(paths, path)
+                    .ok()
+                    .and_then(|result| result.to_video_info())
+                {
+                    Some(info) => Probe {
+                        width: Some(info.width),
+                        height: Some(info.height),
+                        svg_declared: false,
+                        video: None,
+                        animation: None,
+                        skip_reason: None,
+                    },
+                    None => skipped(format!("无法从 .{ext} 中解析出图像尺寸")),
+                };
             }
             match image::image_dimensions(path) {
                 Ok((mut w, mut h)) => {

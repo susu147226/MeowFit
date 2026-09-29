@@ -514,3 +514,151 @@ fn scenario_12_png_batch_to_webp_with_size_comparison() {
 
     let _ = fs::remove_dir_all(root.parent().unwrap());
 }
+
+/// 用 ffprobe 读尺寸——AVIF / HEIC 这些格式 image crate 读不了。
+fn probe_dims(path: &Path) -> (u32, u32) {
+    let probe = meowfit_lib::ffmpeg::probe(&meowfit_lib::ffmpeg::resolve_paths().unwrap(), path).unwrap();
+    let info = probe.to_video_info().unwrap();
+    (info.width, info.height)
+}
+
+/// 规范 5.4：AVIF 由 FFmpeg 处理（image crate 的 avif 特性未启用，回退 FFmpeg）。
+#[test]
+fn avif_is_scanned_and_resized_through_ffmpeg() {
+    let root = material_root("avif");
+    let source = root.join("pic.avif");
+    // 用本项目的 FFmpeg 造一张 AVIF
+    let out = std::process::Command::new(&meowfit_lib::ffmpeg::resolve_paths().unwrap().ffmpeg)
+        .args([
+            "-hide_banner",
+            "-nostdin",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=s=320x200:d=1",
+            "-frames:v",
+            "1",
+            "-c:v",
+            "libaom-av1",
+            "-cpu-used",
+            "8",
+            "-crf",
+            "40",
+            "-f",
+            "avif",
+            &source.to_string_lossy(),
+        ])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+
+    // 扫描：必须能读出尺寸，而不是被当作不支持的格式跳过
+    let result = scan_folder(&root, &ScanOptions::default()).unwrap();
+    let scanned = result.files.iter().find(|f| f.name == "pic.avif").unwrap();
+    assert_eq!(scanned.kind, Some(meowfit_lib::model::MediaKind::Raster));
+    assert_eq!((scanned.width, scanned.height), (Some(320), Some(200)));
+    assert!(scanned.is_processable(), "AVIF 应可处理，实际：{:?}", scanned.skip_reason);
+
+    // 保持原格式：缩放后仍是 AVIF
+    let report = run_with(
+        &root,
+        &result.files,
+        Some(Setting::scale(Mode::A, 0.5)),
+        ImageOptions::default(),
+    );
+    assert_eq!(report.counts.success, 1, "{:?}", report.outcomes[0].reason);
+    let resized = PathBuf::from(&report.output_dir).join("pic.avif");
+    assert!(resized.exists());
+    assert_eq!(probe_dims(&resized), (160, 100));
+
+    // 统一转成 PNG：走同一套 FFmpeg 路径
+    let root2 = material_root("avifb");
+    std::fs::copy(&source, root2.join("pic.avif")).unwrap();
+    let files2 = scan_folder(&root2, &ScanOptions::default()).unwrap().files;
+    let to_png = run_with(
+        &root2,
+        &files2,
+        Some(Setting::scale(Mode::A, 0.5)),
+        ImageOptions {
+            format: OutputFormat::Png,
+            ..ImageOptions::default()
+        },
+    );
+    assert_eq!(to_png.counts.success, 1, "{:?}", to_png.outcomes[0].reason);
+    assert_eq!(dims(&PathBuf::from(&to_png.output_dir).join("pic.png")), (160, 100));
+
+    let _ = fs::remove_dir_all(root.parent().unwrap());
+    let _ = fs::remove_dir_all(root2.parent().unwrap());
+}
+
+/// HEIC 能读能缩放，但当前 FFmpeg 构建写不出 HEIC——必须给出可操作的提示，
+/// 而不是静默跳过或写出坏文件。
+#[test]
+fn heic_without_a_usable_muxer_reports_actionable_error() {
+    let root = material_root("heic");
+    let source = root.join("shot.heic");
+    // FFmpeg 没有 heic muxer，这里用 mov 容器 + HEVC 造一个同名文件，
+    // 足以让 ffprobe 读出尺寸、并把写出路径走到 HEIC 分支
+    let out = std::process::Command::new(&meowfit_lib::ffmpeg::resolve_paths().unwrap().ffmpeg)
+        .args([
+            "-hide_banner",
+            "-nostdin",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc=s=200x160:d=1",
+            "-frames:v",
+            "1",
+            "-c:v",
+            "libx265",
+            "-preset",
+            "ultrafast",
+            "-f",
+            "mov",
+            &source.to_string_lossy(),
+        ])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+
+    let result = scan_folder(&root, &ScanOptions::default()).unwrap();
+    let scanned = result.files.iter().find(|f| f.name == "shot.heic").unwrap();
+    assert!(
+        scanned.is_processable(),
+        "HEIC 应能读出尺寸，实际：{:?}",
+        scanned.skip_reason
+    );
+
+    // 保持原格式 → 写不出 HEIC，必须失败并说明怎么办
+    let report = run_with(
+        &root,
+        &result.files,
+        Some(Setting::scale(Mode::A, 0.5)),
+        ImageOptions::default(),
+    );
+    assert_eq!(report.counts.failed, 1);
+    let reason = report.outcomes[0].reason.clone().unwrap_or_default();
+    assert!(reason.contains("HEIC"), "实际：{reason}");
+    assert!(reason.contains("输出格式"), "应引导用户改选输出格式，实际：{reason}");
+
+    // 用户改选 PNG 后应当成功
+    let root2 = material_root("heicb");
+    std::fs::copy(&source, root2.join("shot.heic")).unwrap();
+    let files2 = scan_folder(&root2, &ScanOptions::default()).unwrap().files;
+    let to_png = run_with(
+        &root2,
+        &files2,
+        Some(Setting::scale(Mode::A, 0.5)),
+        ImageOptions {
+            format: OutputFormat::Png,
+            ..ImageOptions::default()
+        },
+    );
+    assert_eq!(to_png.counts.success, 1, "{:?}", to_png.outcomes[0].reason);
+    assert_eq!(dims(&PathBuf::from(&to_png.output_dir).join("shot.png")), (100, 80));
+
+    let _ = fs::remove_dir_all(root.parent().unwrap());
+    let _ = fs::remove_dir_all(root2.parent().unwrap());
+}

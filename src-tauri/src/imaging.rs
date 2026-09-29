@@ -273,6 +273,27 @@ pub fn resolve_output_ext(src_ext: &str, format: OutputFormat) -> String {
     target
 }
 
+/// 只能交给 FFmpeg 处理、image crate 解不了的位图（规范 5.4）。
+pub fn is_ffmpeg_only_raster(ext: &str) -> bool {
+    matches!(ext.to_ascii_lowercase().as_str(), "avif" | "heic" | "heif")
+}
+
+/// FFmpeg 的 scale 滤镜用 flags 指定重采样算法，与界面上选的保持一致。
+pub fn ffmpeg_scale_flag(resample: Resample) -> &'static str {
+    match resample {
+        Resample::Lanczos3 => "lanczos",
+        Resample::Bicubic => "bicubic",
+        Resample::Bilinear => "bilinear",
+        Resample::Nearest => "neighbor",
+    }
+}
+
+/// JPEG 质量（1–100）换算成 mjpeg 编码器的 `-q:v`（2–31，越小越好）。
+pub fn jpeg_qscale(quality: u8) -> u32 {
+    let q = quality.clamp(1, 100) as f64;
+    (31.0 - (q / 100.0) * 29.0).round().clamp(2.0, 31.0) as u32
+}
+
 /// 处理并写出一个文件。返回新文件的字节数。
 pub fn write_image(
     src: &Path,

@@ -268,6 +268,88 @@ fn encode_animation(
     Ok(fs::metadata(out).map(|m| m.len()).unwrap_or(0))
 }
 
+/// 处理只能交给 FFmpeg 的位图（AVIF / HEIC / HEIF，规范 5.4）。
+///
+/// 这些格式 image crate 解不了，统一走 FFmpeg 的 scale + 对应编码器。
+/// 其中 HEIC / HEIF **没有可用的 muxer**，只能引导用户改选输出格式。
+fn encode_ffmpeg_image(
+    paths: Option<&ffmpeg::FfmpegPaths>,
+    src: &Path,
+    out: &Path,
+    target: &crate::model::Computed,
+    opts: &imaging::ImageOptions,
+) -> Result<u64, AppError> {
+    let paths = paths.ok_or_else(|| {
+        AppError::new(
+            ErrorCode::FfmpegMissing,
+            "找不到 FFmpeg，无法处理 AVIF / HEIC。请把 ffmpeg.exe 与 ffprobe.exe 放到              src-tauri/resources/ffmpeg/win-x64/。"
+                .to_string(),
+        )
+    })?;
+
+    let out_ext = out
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    if matches!(out_ext.as_str(), "heic" | "heif") {
+        return Err(AppError::new(
+            ErrorCode::WriteFailed,
+            "当前 FFmpeg 构建无法写出 HEIC / HEIF。请在「图片处理 → 输出格式」里选择 PNG / JPEG / WebP 后重试。"
+                .to_string(),
+        ));
+    }
+
+    let flag = imaging::ffmpeg_scale_flag(opts.resample);
+    let mut args: Vec<String> = ["-hide_banner", "-nostdin", "-y"]
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
+    args.push("-i".into());
+    args.push(src.to_string_lossy().into_owned());
+    args.push("-vf".into());
+    args.push(format!("scale={}:{}:flags={flag}", target.width, target.height));
+    args.push("-frames:v".into());
+    args.push("1".into());
+
+    match out_ext.as_str() {
+        "avif" => {
+            args.push("-c:v".into());
+            args.push("libaom-av1".into());
+            args.push("-crf".into());
+            // 质量 1–100 映射到 AV1 的 CRF（0–63，越小越好）
+            let crf = (63.0 - (opts.quality.clamp(1, 100) as f64 / 100.0) * 63.0).round() as u32;
+            args.push(crf.min(63).to_string());
+            args.push("-cpu-used".into());
+            args.push("8".into());
+            args.push("-f".into());
+            args.push("avif".into());
+        }
+        "png" => {
+            args.push("-c:v".into());
+            args.push("png".into());
+        }
+        "webp" => {
+            args.push("-c:v".into());
+            args.push("libwebp".into());
+            args.push("-quality".into());
+            args.push(opts.quality.clamp(1, 100).to_string());
+        }
+        "jpg" | "jpeg" => {
+            args.push("-c:v".into());
+            args.push("mjpeg".into());
+            args.push("-q:v".into());
+            args.push(imaging::jpeg_qscale(opts.quality).to_string());
+        }
+        _ => {}
+    }
+
+    args.push(out.to_string_lossy().into_owned());
+    ffmpeg::run_ffmpeg(paths, &args)?;
+    Ok(fs::metadata(out).map(|m| m.len()).unwrap_or(0))
+}
+
 /// 动图按目标体积逐级逼近（规范 6.10 / 10.7）。
 ///
 /// 依次尝试「原参数 → 减色数 → 降尺寸 → 丢帧」，每一档写出并测量实际体积，
@@ -665,6 +747,8 @@ pub fn execute(
                 opts,
                 &mut notes,
             )
+        } else if imaging::is_ffmpeg_only_raster(&src_ext) {
+            encode_ffmpeg_image(ffmpeg_paths.as_ref(), Path::new(&source.path), &final_path, &target, &opts.image)
         } else if source.kind == crate::model::MediaKind::Video {
             encode_video(
                 ffmpeg_paths.as_ref(),
