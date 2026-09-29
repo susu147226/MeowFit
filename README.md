@@ -61,7 +61,7 @@ MeowFit/
 │
 ├─ scripts/
 │  ├─ build-ffmpeg-gpl.sh      从源码构建 GPL 版 FFmpeg
-│  └─ package-portable.ps1     生成 Portable 绿色版压缩包
+│  └─ package-release.ps1      收集安装版与 Portable 版产物到 artifacts/
 │
 └─ src-tauri/resources/ffmpeg/win-x64/    FFmpeg 二进制放置目录（不入库）
 ```
@@ -167,7 +167,8 @@ MeowFit/
 src-tauri/resources/ffmpeg/win-x64/
 ├── ffmpeg.exe
 ├── ffprobe.exe
-└── libgcc_s_seh-1.dll
+├── libgcc_s_seh-1.dll
+└── libwinpthread-1.dll
 ```
 
 **获取方式：** 可用 `scripts/build-ffmpeg-gpl.sh` 自行构建。该脚本在 MSYS2 MINGW64 下运行，

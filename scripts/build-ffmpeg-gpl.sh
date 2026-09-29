@@ -2,7 +2,7 @@
 # ============================================================
 # 喵尺 MeowFit — GPL 版 FFmpeg 构建脚本
 #
-# 产物：ffmpeg.exe / ffprobe.exe（静态链接）+ libgcc_s_seh-1.dll
+# 产物：ffmpeg.exe / ffprobe.exe（静态链接）+ libgcc_s_seh-1.dll + libwinpthread-1.dll
 #       复制到 src-tauri/resources/ffmpeg/win-x64/
 #
 # 开出的组件覆盖规范 12.5 的自检项：
@@ -102,7 +102,7 @@ echo "==> 配置"
 #   -Wl,--allow-multiple-definition
 #       MSYS2 上同时链接 libgcc_eh.a 与 libgcc_s.a 时，_Unwind_Resume 会重复定义，
 #       这是 MinGW 静态链接的已知冲突；两处符号实现等价，允许重复定义即可。
-#       代价是退出时仍需随包附带 libgcc_s_seh-1.dll。
+#       代价是仍需随包附带 libgcc_s_seh-1.dll，而它又依赖 libwinpthread-1.dll。
 #   --disable-network            程序只处理本地文件，不需要任何网络协议
 ./configure \
   --prefix="${WORK}/prefix" \
@@ -124,6 +124,8 @@ make install
 cp "${WORK}/prefix/bin/ffmpeg.exe" "${WORK}/prefix/bin/ffprobe.exe" "${OUT}/"
 # 静态链接后仅剩这一个外部运行时依赖
 cp /mingw64/bin/libgcc_s_seh-1.dll "${OUT}/"
+# libgcc_s_seh-1.dll 依赖 libwinpthread-1.dll，缺了会在启动 ffmpeg 时弹「找不到 libwinpthread-1.dll」
+cp /mingw64/bin/libwinpthread-1.dll "${OUT}/"
 
 echo
 echo "==> 完成：${OUT}"

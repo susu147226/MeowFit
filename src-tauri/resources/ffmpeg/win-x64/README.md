@@ -15,3 +15,6 @@ ffprobe.exe
 
 FFmpeg 适用 GPL 许可证，**不受本项目私有许可证约束**，详见仓库根 `README.md`
 的「许可与致谢」一节。
+
+> 注：ffmpeg.exe 静态链接了编解码器，但运行时依赖 libgcc_s_seh-1.dll，
+> 而它又依赖 libwinpthread-1.dll，因此这两个 DLL 必须与 ffmpeg.exe 放在同一目录。
