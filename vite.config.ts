@@ -1,5 +1,7 @@
-import { defineConfig } from "vite";
+// 使用 vitest/config 的 defineConfig，使 test 段有类型
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 // @ts-expect-error 未引入 @types/node，此处按模板方式取用 process
 import process from "node:process";
 
@@ -7,7 +9,7 @@ const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(() => ({
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
 
   // 防止 Vite 清屏掩盖 Rust 侧的编译错误
   clearScreen: false,
@@ -33,5 +35,10 @@ export default defineConfig(() => ({
   build: {
     target: "chrome110",
     sourcemap: false,
+  },
+
+  test: {
+    environment: "jsdom",
+    include: ["tests/unit/**/*.test.ts"],
   },
 }));

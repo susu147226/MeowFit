@@ -1,6 +1,6 @@
 [package]
 name = "meowfit"
-version = "0.1.0"
+version = "0.2.0"
 description = "喵尺 MeowFit — 本地媒体尺寸批量调整工具（仅 Windows）"
 authors = ["云舒眠眠"]
 edition = "2021"
@@ -23,6 +23,16 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# 前缀分组正则
+regex = "1"
+# 素材递归扫描
+walkdir = "2"
+# 包含 / 排除通配符（规范 5.5）
+globset = "0.4"
+# 静态位图处理引擎（规范 5.4）
+image = "0.25"
+# 日志与报告时间戳
+chrono = "0.4"
 
 # 体积优化：https://tauri.app/concept/size/#cargo-configuration
 [profile.release]

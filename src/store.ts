@@ -1,0 +1,558 @@
+import { create } from "zustand";
+
+import { api } from "./api";
+import { linkDimension } from "./lib/expression";
+import type {
+  AppInfo,
+  ExecReport,
+  Group,
+  GroupTierState,
+  Grouping,
+  Plan,
+  PlanFileInput,
+  PlanGroupInput,
+  PlanRequest,
+  ScanOptions,
+  ScannedFile,
+  Setting,
+  Settings,
+  SourceRef,
+} from "./types";
+
+export interface LogEntry {
+  time: string;
+  level: "INFO" | "WARN" | "ERROR";
+  message: string;
+}
+
+/** 编辑作用域：整体 / 某个分组 / 某个单文件（规范 6.3「每个可设置位置」）。 */
+export type Scope =
+  | { type: "global" }
+  | { type: "group"; name: string }
+  | { type: "file"; id: string };
+
+/** 「按比例自动计算」的基准来源（规范 6.3 的批量填充基准）。 */
+export type Basis = "selection" | "groupMax" | "groupMin";
+
+const MAX_LOGS = 500;
+
+interface MeowState {
+  info: AppInfo | null;
+  settings: Settings | null;
+  theme: "light" | "dark";
+  aboutOpen: boolean;
+
+  root: string | null;
+  scanOptions: ScanOptions;
+  files: ScannedFile[];
+  outputDir: string | null;
+  scanning: boolean;
+
+  grouping: Grouping;
+  groups: Group[];
+  /** 存在手动修正（重命名 / 移动 / 合并）时为 true */
+  groupsDirty: boolean;
+  /** 待切换的分组方式；非空表示正在等待确认或即将生效 */
+  pendingGrouping: Grouping | null;
+
+  globalSetting: Setting | null;
+  groupTiers: Record<string, GroupTierState>;
+  fileSettings: Record<string, Setting>;
+
+  linkEnabled: boolean;
+  basis: Basis;
+
+  scope: Scope;
+  selectedIds: string[];
+
+  plan: Plan | null;
+  report: ExecReport | null;
+  running: boolean;
+  logs: LogEntry[];
+
+  init: () => Promise<void>;
+  log: (level: LogEntry["level"], message: string) => void;
+  toggleTheme: () => void;
+  setAboutOpen: (open: boolean) => void;
+
+  setScanOptions: (patch: Partial<ScanOptions>) => void;
+  scanFolder: (path: string, options?: Partial<ScanOptions>) => Promise<void>;
+
+  requestGrouping: (grouping: Grouping) => void;
+  confirmGrouping: () => Promise<void>;
+  cancelGrouping: () => void;
+  renameGroup: (from: string, to: string) => void;
+  moveFile: (fileId: string, toGroup: string) => void;
+  mergeGroups: (from: string, into: string) => void;
+
+  setScope: (scope: Scope) => void;
+  toggleSelect: (id: string, additive: boolean) => void;
+  setLinkEnabled: (enabled: boolean) => void;
+  setBasis: (basis: Basis) => void;
+
+  setGlobalSetting: (setting: Setting | null) => void;
+  setGroupTier: (group: string, tier: GroupTierState) => void;
+  setFileSetting: (id: string, setting: Setting | null) => void;
+  clearAllSettings: () => void;
+
+  refreshPlan: () => Promise<void>;
+  execute: () => Promise<void>;
+}
+
+type StateSlice = Pick<
+  MeowState,
+  | "files"
+  | "groups"
+  | "scope"
+  | "selectedIds"
+  | "basis"
+  | "linkEnabled"
+  | "globalSetting"
+  | "groupTiers"
+  | "fileSettings"
+>;
+
+function nowTime(): string {
+  return new Date().toLocaleTimeString("zh-CN", { hour12: false });
+}
+
+/** 可参与处理的素材：有尺寸、且扫描阶段未被标记跳过。 */
+export function processable(files: ScannedFile[]): ScannedFile[] {
+  return files.filter((f) => f.skipReason === null && f.width !== null && f.height !== null);
+}
+
+/** 把「只填了一边」的参数按基准尺寸补齐另一边（规范 6.3 的「按比例自动计算」）。
+ *
+ * 关闭联动时不补齐，交由 Rust 侧按 13.2 报 `E_INCOMPLETE_DIMENSION` 并指明缺哪一边，
+ * 保证该错误只有一份实现。
+ */
+function materialize(setting: Setting, reference: { width: number; height: number }): Setting {
+  if (setting.mode !== "B" && setting.mode !== "C" && setting.mode !== "D") {
+    return setting;
+  }
+  const linked = linkDimension(reference, setting.width ?? null, setting.height ?? null);
+  return { ...setting, width: linked.width ?? undefined, height: linked.height ?? undefined };
+}
+
+/** 依据作用域与基准选项，取出用于「按比例自动计算」的参考尺寸（规范 6.3）。 */
+export function referenceFor(state: StateSlice, scope: Scope): { width: number; height: number } {
+  if (scope.type === "file") {
+    const file = state.files.find((f) => f.id === scope.id);
+    if (file?.width && file?.height) return { width: file.width, height: file.height };
+  }
+
+  const groupFiles =
+    scope.type === "group"
+      ? state.groups.find((g) => g.name === scope.name)?.fileIds ?? []
+      : null;
+
+  const pool = processable(state.files).filter((f) => (groupFiles ? groupFiles.includes(f.id) : true));
+
+  if (state.basis === "selection") {
+    const selected = pool.find((f) => state.selectedIds.includes(f.id));
+    if (selected?.width && selected?.height) {
+      return { width: selected.width, height: selected.height };
+    }
+  } else if (pool.length > 0) {
+    const areas = pool.map((f) => (f.width as number) * (f.height as number));
+    const target = state.basis === "groupMax" ? Math.max(...areas) : Math.min(...areas);
+    const picked = pool[areas.indexOf(target)];
+    if (picked?.width && picked?.height) {
+      return { width: picked.width, height: picked.height };
+    }
+  }
+
+  const fallback = pool[0];
+  if (fallback?.width && fallback?.height) {
+    return { width: fallback.width, height: fallback.height };
+  }
+  return { width: 0, height: 0 };
+}
+
+/** 由当前界面状态构建任务计划请求。预览与执行共用，保证两者看到的是同一套参数。 */
+function buildRequest(state: StateSlice): { request: PlanRequest; sources: SourceRef[] } {
+  const files = processable(state.files);
+  const link = state.linkEnabled;
+
+  const groupOf = new Map<string, string>();
+  for (const group of state.groups) {
+    for (const id of group.fileIds) groupOf.set(id, group.name);
+  }
+
+  const globalRef = referenceFor(state, state.scope);
+  const global = state.globalSetting
+    ? link
+      ? materialize(state.globalSetting, globalRef)
+      : state.globalSetting
+    : null;
+
+  const planFiles: PlanFileInput[] = files.map((f) => {
+    const own = state.fileSettings[f.id];
+    const group = groupOf.get(f.id) ?? "";
+    const setting = own
+      ? link
+        ? materialize(own, referenceFor(state, { type: "group", name: group }))
+        : own
+      : null;
+    return {
+      id: f.id,
+      name: f.name,
+      width: f.width as number,
+      height: f.height as number,
+      isVideo: f.kind === "video",
+      group,
+      setting,
+    };
+  });
+
+  const planGroups: PlanGroupInput[] = state.groups.map((g) => {
+    const tier = state.groupTiers[g.name] ?? null;
+    if (tier && tier.kind === "explicit" && link) {
+      const ref = referenceFor(state, { type: "group", name: g.name });
+      return { name: g.name, setting: { kind: "explicit", setting: materialize(tier.setting, ref) } };
+    }
+    return { name: g.name, setting: tier };
+  });
+
+  const sources: SourceRef[] = files.map((f) => ({
+    id: f.id,
+    path: f.path,
+    kind: f.kind as SourceRef["kind"],
+  }));
+
+  return { request: { files: planFiles, groups: planGroups, global }, sources };
+}
+
+/** 合并同名分组，避免重命名 / 合并后出现两组同名。 */
+function coalesce(groups: Group[]): Group[] {
+  const merged: Group[] = [];
+  for (const group of groups) {
+    const existing = merged.find((g) => g.name === group.name);
+    if (existing) {
+      existing.fileIds = [...new Set([...existing.fileIds, ...group.fileIds])];
+    } else {
+      merged.push({ ...group });
+    }
+  }
+  return merged;
+}
+
+export const useStore = create<MeowState>((set, get) => ({
+  info: null,
+  settings: null,
+  theme: "light",
+  aboutOpen: false,
+
+  root: null,
+  scanOptions: { recursive: true, include: [], exclude: [] },
+  files: [],
+  outputDir: null,
+  scanning: false,
+
+  grouping: "prefix",
+  groups: [],
+  groupsDirty: false,
+  pendingGrouping: null,
+
+  globalSetting: null,
+  groupTiers: {},
+  fileSettings: {},
+
+  linkEnabled: true,
+  basis: "selection",
+
+  scope: { type: "global" },
+  selectedIds: [],
+
+  plan: null,
+  report: null,
+  running: false,
+  logs: [],
+
+  log: (level, message) => {
+    set((state) => {
+      const logs = [...state.logs, { time: nowTime(), level, message }];
+      return { logs: logs.length > MAX_LOGS ? logs.slice(-MAX_LOGS) : logs };
+    });
+  },
+
+  init: async () => {
+    try {
+      const [info, settings] = await Promise.all([api.appInfo(), api.loadSettings()]);
+      const theme = settings.theme?.mode === "dark" ? "dark" : "light";
+      document.documentElement.dataset.theme = theme;
+      set({ info, settings, theme, grouping: settings.grouping });
+      get().log("INFO", `${info.name} v${info.version} 已启动`);
+      get().log("INFO", `配置目录：${info.configDir}（${info.configMode}）`);
+      if (!info.configPersistent) {
+        get().log("WARN", "配置未能持久化：当前环境不可写，已降级到临时目录");
+      }
+    } catch (error) {
+      get().log("ERROR", `初始化失败：${String(error)}`);
+    }
+  },
+
+  toggleTheme: () => {
+    const theme = get().theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = theme;
+    set({ theme });
+    const settings = get().settings;
+    if (settings) {
+      const next: Settings = { ...settings, theme: { ...settings.theme, mode: theme } };
+      set({ settings: next });
+      api.saveSettings(next).catch((error) => get().log("ERROR", `保存主题失败：${String(error)}`));
+    }
+  },
+
+  setAboutOpen: (open) => set({ aboutOpen: open }),
+
+  setScanOptions: (patch) => set((state) => ({ scanOptions: { ...state.scanOptions, ...patch } })),
+
+  scanFolder: async (path, options) => {
+    const scanOptions = { ...get().scanOptions, ...options };
+    set({ scanning: true, scanOptions });
+    try {
+      const result = await api.scanFolder(path, scanOptions);
+      const grouping = get().grouping;
+      const groups = await api.groupEntries(
+        result.files.map((f) => ({ id: f.id, name: f.name, relativeParent: f.relativeParent })),
+        grouping,
+      );
+
+      const known = new Set(result.files.map((f) => f.id));
+      set((state) => {
+        const fileSettings: Record<string, Setting> = {};
+        for (const [id, setting] of Object.entries(state.fileSettings)) {
+          if (known.has(id)) fileSettings[id] = setting;
+        }
+        return {
+          root: result.root,
+          files: result.files,
+          outputDir: result.outputDir,
+          groups,
+          groupsDirty: false,
+          pendingGrouping: null,
+          groupTiers: {},
+          fileSettings,
+          report: null,
+          selectedIds: [],
+          scope: { type: "global" as const },
+          scanning: false,
+        };
+      });
+
+      const skipped = result.files.filter((f) => f.skipReason !== null).length;
+      get().log("INFO", `扫描完成：共 ${result.files.length} 个文件，其中 ${skipped} 个已跳过`);
+      get().log("INFO", `输出目录：${result.outputDir}`);
+
+      // 最近使用的文件夹（最多 10 条）持久化保存
+      try {
+        set({ settings: await api.touchRecentFolder(result.root) });
+      } catch (error) {
+        get().log("WARN", `保存最近文件夹失败：${String(error)}`);
+      }
+
+      await get().refreshPlan();
+    } catch (error) {
+      set({ scanning: false });
+      get().log("ERROR", `扫描失败：${String(error)}`);
+    }
+  },
+
+  requestGrouping: (grouping) => {
+    if (grouping === get().grouping) return;
+    // 已有手动修正时先挂起，等界面确认（规范 6.4）
+    set({ pendingGrouping: grouping });
+    if (get().groupsDirty) return;
+    void get().confirmGrouping();
+  },
+
+  confirmGrouping: async () => {
+    const grouping = get().pendingGrouping;
+    if (!grouping) return;
+    try {
+      const groups = await api.groupEntries(
+        get().files.map((f) => ({ id: f.id, name: f.name, relativeParent: f.relativeParent })),
+        grouping,
+      );
+      set({
+        grouping,
+        groups,
+        groupsDirty: false,
+        pendingGrouping: null,
+        groupTiers: {},
+        scope: { type: "global" },
+      });
+      get().log("INFO", `分组方式已切换为「${grouping}」，手动修正已重置`);
+      await get().refreshPlan();
+    } catch (error) {
+      get().log("ERROR", `重新分组失败：${String(error)}`);
+    }
+  },
+
+  cancelGrouping: () => set({ pendingGrouping: null }),
+
+  renameGroup: (from, to) => {
+    const name = to.trim();
+    if (!name || name === from) return;
+    set((state) => {
+      const groupTiers = { ...state.groupTiers };
+      if (from in groupTiers) {
+        groupTiers[name] = groupTiers[from];
+        delete groupTiers[from];
+      }
+      return {
+        groups: coalesce(state.groups.map((g) => (g.name === from ? { ...g, name } : g))),
+        groupsDirty: true,
+        groupTiers,
+      };
+    });
+    get().log("INFO", `分组已重命名：${from} → ${name}`);
+    void get().refreshPlan();
+  },
+
+  moveFile: (fileId, toGroup) => {
+    set((state) => {
+      if (!state.groups.some((g) => g.name === toGroup)) return state;
+      const groups = state.groups.map((g) => ({
+        ...g,
+        fileIds: g.fileIds.filter((id) => id !== fileId),
+      }));
+      const target = groups.find((g) => g.name === toGroup);
+      if (target) target.fileIds = [...target.fileIds, fileId];
+      return { groups, groupsDirty: true };
+    });
+    get().log("INFO", `已把 ${fileId} 移动到分组「${toGroup}」`);
+    void get().refreshPlan();
+  },
+
+  mergeGroups: (from, into) => {
+    if (from === into) return;
+    set((state) => {
+      const moving = state.groups.find((g) => g.name === from);
+      if (!moving) return state;
+      const groupTiers = { ...state.groupTiers };
+      delete groupTiers[from];
+      return {
+        groups: coalesce(
+          state.groups
+            .filter((g) => g.name !== from)
+            .map((g) => (g.name === into ? { ...g, fileIds: [...g.fileIds, ...moving.fileIds] } : g)),
+        ),
+        groupsDirty: true,
+        groupTiers,
+      };
+    });
+    get().log("INFO", `分组已合并：${from} → ${into}`);
+    void get().refreshPlan();
+  },
+
+  setScope: (scope) => set({ scope }),
+
+  toggleSelect: (id, additive) => {
+    set((state) => {
+      if (!additive) return { selectedIds: [id] };
+      const has = state.selectedIds.includes(id);
+      return {
+        selectedIds: has ? state.selectedIds.filter((x) => x !== id) : [...state.selectedIds, id],
+      };
+    });
+    void get().refreshPlan();
+  },
+
+  setLinkEnabled: (enabled) => {
+    set({ linkEnabled: enabled });
+    get().log(
+      "INFO",
+      enabled
+        ? "已开启「按比例自动计算」：只填一边将按基准尺寸自动补全另一边"
+        : "已关闭「按比例自动计算」：宽高各自独立，只填一边将报错",
+    );
+    void get().refreshPlan();
+  },
+
+  setBasis: (basis) => {
+    set({ basis });
+    void get().refreshPlan();
+  },
+
+  setGlobalSetting: (setting) => {
+    set({ globalSetting: setting });
+    void get().refreshPlan();
+  },
+
+  setGroupTier: (group, tier) => {
+    set((state) => ({ groupTiers: { ...state.groupTiers, [group]: tier } }));
+    void get().refreshPlan();
+  },
+
+  setFileSetting: (id, setting) => {
+    set((state) => {
+      const fileSettings = { ...state.fileSettings };
+      if (setting === null) delete fileSettings[id];
+      else fileSettings[id] = setting;
+      return { fileSettings };
+    });
+    void get().refreshPlan();
+  },
+
+  clearAllSettings: () => {
+    set({ globalSetting: null, groupTiers: {}, fileSettings: {} });
+    get().log("INFO", "已清空全部缩放设置，所有素材将保持原样");
+    void get().refreshPlan();
+  },
+
+  refreshPlan: async () => {
+    const state = get();
+    if (state.files.length === 0) {
+      set({ plan: null });
+      return;
+    }
+    try {
+      const { request } = buildRequest(state);
+      set({ plan: await api.previewPlan(request) });
+    } catch (error) {
+      get().log("ERROR", `预览计算失败：${String(error)}`);
+    }
+  },
+
+  execute: async () => {
+    const state = get();
+    if (!state.root) return;
+    if (!state.plan) return;
+
+    // 校验失败时不得写出任何文件（规范 13.1 的 VALIDATION_FAILED）
+    if (!state.plan.ok) {
+      get().log("ERROR", "存在校验失败的素材，已阻止执行。请先修正后再执行。");
+      return;
+    }
+
+    set({ running: true, report: null });
+    try {
+      const { request, sources } = buildRequest(state);
+      const options = {
+        outputDir: null,
+        keepStructure: state.settings?.output.keepStructure ?? true,
+        onConflict: state.settings?.output.onConflict ?? ("skip" as const),
+        backgroundFillColor: state.settings?.output.backgroundFillColor ?? "#FFFFFF",
+      };
+
+      get().log("INFO", `开始执行：共 ${request.files.length} 个素材`);
+      const report = await api.executePlan(request, sources, options, state.root);
+      set({ report, running: false });
+
+      const c = report.counts;
+      get().log(
+        "INFO",
+        `执行完成：成功 ${c.success}、未改动 ${c.unchanged}、已跳过 ${c.skipped}、失败 ${c.failed}`,
+      );
+      get().log("INFO", `输出目录：${report.outputDir}`);
+      if (c.failed > 0) {
+        get().log("WARN", `有 ${c.failed} 个素材处理失败，详情见结果列表`);
+      }
+    } catch (error) {
+      set({ running: false });
+      get().log("ERROR", `执行失败：${String(error)}`);
+    }
+  },
+}));

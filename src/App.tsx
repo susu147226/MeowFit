@@ -1,33 +1,52 @@
-import { useEffect, useState } from "react";
-import { getVersion } from "@tauri-apps/api/app";
+import { useEffect } from "react";
+
+import AboutDialog from "./components/AboutDialog";
+import FileList from "./components/FileList";
+import GroupingConfirm from "./components/GroupingConfirm";
+import LogPanel from "./components/LogPanel";
+import PreviewPanel from "./components/PreviewPanel";
+import RunPanel from "./components/RunPanel";
+import ScanBar from "./components/ScanBar";
+import SettingsPanel from "./components/SettingsPanel";
+import TopBar from "./components/TopBar";
+import { useStore } from "./store";
 
 export default function App() {
-  const [version, setVersion] = useState("");
+  const init = useStore((s) => s.init);
+  const aboutOpen = useStore((s) => s.aboutOpen);
 
   useEffect(() => {
-    // 版本号取自 tauri.conf.json，避免在界面上再写一份需要同步的常量
-    getVersion()
-      .then(setVersion)
-      .catch(() => setVersion(""));
-  }, []);
+    void init();
+  }, [init]);
 
   return (
-    <div className="app">
-      <header className="app-header">
-        <h1 className="app-title">喵尺 MeowFit</h1>
-        {version && <span className="app-version">v{version}</span>}
-      </header>
+    <div className="flex h-full flex-col bg-bg text-text">
+      <TopBar />
+      <ScanBar />
 
-      <main className="app-body">
-        <p className="app-placeholder">
-          P0 阶段：工程骨架已就位，功能尚未实现。
-        </p>
-      </main>
+      <div className="flex min-h-0 flex-1">
+        {/* 素材列表区 */}
+        <FileList />
 
-      <footer className="app-footer">
-        <span>源码可见的专有软件 · 仅限个人非商业用途 · 禁止再分发</span>
-        <span>© 2026 云舒眠眠</span>
-      </footer>
+        {/* 参数设置区 / 预览区 / 执行与进度区 */}
+        <div className="flex w-[470px] shrink-0 flex-col overflow-hidden border-l border-border">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <SettingsPanel />
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <PreviewPanel />
+          </div>
+          <div className="flex max-h-[38%] min-h-0 flex-col overflow-hidden">
+            <RunPanel />
+          </div>
+        </div>
+      </div>
+
+      {/* 日志区 */}
+      <LogPanel />
+
+      {aboutOpen && <AboutDialog />}
+      <GroupingConfirm />
     </div>
   );
 }

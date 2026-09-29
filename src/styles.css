@@ -1,13 +1,14 @@
-/* ============================================================
-   喵尺 MeowFit — 基础样式
-   设计取向：紧凑、务实的本地工具界面。全部尺寸以 CSS 自定义属性
-   定义，浅色 / 深色两套变量，便于后续阶段整体调色。
-   ============================================================ */
+@import "tailwindcss";
 
+/* 主题切换用手动 data-theme，而不是只跟随系统偏好（规范第七节：支持浅色 / 深色主题） */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ---------- 语义色令牌：浅色 ---------- */
 :root {
   --bg: #f7f6f3;
   --surface: #ffffff;
   --surface-2: #fbfaf8;
+  --surface-3: #f1efea;
   --border: #e4e1db;
   --border-strong: #cfcac1;
   --text: #1d1b18;
@@ -16,42 +17,72 @@
   --accent: #a8763a;
   --accent-hover: #91632e;
   --accent-soft: #f5ede1;
-  --radius: 7px;
-  --radius-sm: 5px;
-  --mono: "Cascadia Mono", Consolas, "Courier New", monospace;
-  --sans: "Microsoft YaHei", "PingFang SC", "Segoe UI", -apple-system, sans-serif;
+  --accent-contrast: #ffffff;
+  --danger: #b3261e;
+  --danger-soft: #fdecea;
+  --ok: #2f6f4f;
+  --ok-soft: #e8f1ec;
+  --warn: #8a5a00;
+  --warn-soft: #fdf3e3;
+  --info: #1f5f9e;
+  --info-soft: #e8f0fa;
 
   color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #17161a;
-    --surface: #1f1e23;
-    --surface-2: #24232a;
-    --border: #322f38;
-    --border-strong: #423e49;
-    --text: #e8e6e3;
-    --text-muted: #a09a94;
-    --text-faint: #6d6862;
-    --accent: #d3a06a;
-    --accent-hover: #e0b184;
-    --accent-soft: #2c2622;
-
-    color-scheme: dark;
-  }
-}
-
-[data-theme="light"] {
-  color-scheme: light;
-}
-
+/* ---------- 语义色令牌：深色 ---------- */
 [data-theme="dark"] {
+  --bg: #17161a;
+  --surface: #1f1e23;
+  --surface-2: #24232a;
+  --surface-3: #2b2a32;
+  --border: #322f38;
+  --border-strong: #423e49;
+  --text: #e8e6e3;
+  --text-muted: #a09a94;
+  --text-faint: #6d6862;
+  --accent: #d3a06a;
+  --accent-hover: #e0b184;
+  --accent-soft: #2c2622;
+  --accent-contrast: #1d1b18;
+  --danger: #f2857c;
+  --danger-soft: #35211f;
+  --ok: #6fbd92;
+  --ok-soft: #1e2f26;
+  --warn: #e0b060;
+  --warn-soft: #332a1a;
+  --info: #7db3e8;
+  --info-soft: #1c2733;
+
   color-scheme: dark;
 }
 
-* {
-  box-sizing: border-box;
+/* 以 var() 引用接入 Tailwind，使 bg-surface / text-muted 这类工具类跟随主题切换 */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-contrast: var(--accent-contrast);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+
+  --font-sans: "Microsoft YaHei", "PingFang SC", "Segoe UI", -apple-system, sans-serif;
+  --font-mono: "Cascadia Mono", Consolas, "Courier New", monospace;
 }
 
 html,
@@ -64,66 +95,15 @@ body,
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: var(--sans);
-  font-size: 14px;
+  font-family: var(--font-sans);
+  font-size: 13px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  overflow: hidden;
 }
 
-/* ---------- 应用外壳 ---------- */
-
-.app {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-
-.app-header {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  padding: 14px 20px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-}
-
-.app-title {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-.app-version {
-  color: var(--text-faint);
-  font-family: var(--mono);
-  font-size: 12px;
-}
-
-.app-body {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-}
-
-.app-placeholder {
-  margin: 0;
-  padding: 20px 28px;
-  background: var(--accent-soft);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  color: var(--text-muted);
-}
-
-.app-footer {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 10px 20px;
-  border-top: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--text-faint);
-  font-size: 12px;
+/* 细滚动条，避免长列表打断界面节奏 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
 }
