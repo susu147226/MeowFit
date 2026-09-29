@@ -97,6 +97,9 @@ pub struct ScannedFile {
     /// 视频附加信息（时长、帧率、旋转、HDR 等），由 ffprobe 得到
     #[serde(skip_serializing_if = "Option::is_none")]
     pub video: Option<crate::ffmpeg::VideoInfo>,
+    /// 动图附加信息（帧数、循环次数），仅动图有
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub animation: Option<crate::animate::AnimationInfo>,
     /// 已跳过的原因；`None` 表示该文件可参与处理
     pub skip_reason: Option<String>,
 }
@@ -253,18 +256,24 @@ pub fn scan_folder(root: &Path, options: &ScanOptions) -> Result<ScanResult, Str
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_ascii_lowercase();
-        let kind = classify(&ext);
-
-        let (width, height, skip_reason, svg_declared, video) = {
-            let probed = probe(path, &ext, kind, ffmpeg_paths.as_ref());
-            (
-                probed.width,
-                probed.height,
-                probed.skip_reason,
-                probed.svg_declared,
-                probed.video,
-            )
+        // .webp 与 .png 既可能是静态也可能是动态，必须看容器内容再定性，
+        // 否则动态 WebP 会被当成静态图处理、只写出第一帧
+        let kind = match classify(&ext) {
+            Some(MediaKind::Raster) if crate::animate::is_animated(path, &ext) => {
+                Some(MediaKind::Animated)
+            }
+            other => other,
         };
+
+        let probed = probe(path, &ext, kind, ffmpeg_paths.as_ref());
+        let (width, height, skip_reason, svg_declared, video, animation) = (
+            probed.width,
+            probed.height,
+            probed.skip_reason,
+            probed.svg_declared,
+            probed.video,
+            probed.animation,
+        );
 
         files.push(ScannedFile {
             id: relative_path.clone(),
@@ -280,6 +289,7 @@ pub fn scan_folder(root: &Path, options: &ScanOptions) -> Result<ScanResult, Str
             height,
             svg_declared,
             video,
+            animation,
             skip_reason,
         });
     }
@@ -300,6 +310,7 @@ struct Probe {
     height: Option<u32>,
     svg_declared: bool,
     video: Option<crate::ffmpeg::VideoInfo>,
+    animation: Option<crate::animate::AnimationInfo>,
     skip_reason: Option<String>,
 }
 
@@ -315,6 +326,7 @@ fn probe(
         height: None,
         svg_declared: false,
         video: None,
+        animation: None,
         skip_reason: Some(reason),
     };
 
@@ -335,6 +347,7 @@ fn probe(
                         height: Some(h),
                         svg_declared: false,
                         video: None,
+                        animation: None,
                         skip_reason: None,
                     }
                 }
@@ -347,11 +360,27 @@ fn probe(
                 height: Some(size.height.round() as u32),
                 svg_declared: size.declared,
                 video: None,
+                animation: None,
                 skip_reason: None,
             },
             None => skipped("无法从 SVG 中解析出尺寸".to_string()),
         },
-        Some(MediaKind::Animated) => skipped("动图处理将在后续阶段接入".to_string()),
+        Some(MediaKind::Animated) => {
+            let Some(paths) = ffmpeg_paths else {
+                return skipped("缺少 FFmpeg，无法处理动图（需 ffmpeg.exe 与 ffprobe.exe）".to_string());
+            };
+            match crate::animate::probe(paths, path, ext) {
+                Ok(info) => Probe {
+                    width: Some(info.width),
+                    height: Some(info.height),
+                    svg_declared: false,
+                    video: None,
+                    animation: Some(info),
+                    skip_reason: None,
+                },
+                Err(err) => skipped(err.message),
+            }
+        }
         Some(MediaKind::Video) => {
             // 视频尺寸必须由 ffprobe 得到（规范 12.4）；找不到 FFmpeg 时如实跳过
             let Some(paths) = ffmpeg_paths else {
@@ -366,6 +395,7 @@ fn probe(
                         height: Some(info.height),
                         svg_declared: false,
                         video: Some(info),
+                        animation: None,
                         skip_reason: None,
                     },
                     None => skipped("该文件里没有视频流".to_string()),

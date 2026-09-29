@@ -62,6 +62,10 @@ interface MeowState {
 
   linkEnabled: boolean;
   basis: Basis;
+  /** 「GIF 转 MP4 / WebM」；none 表示保持动图格式（规范 6.10） */
+  animationToVideo: "none" | "mp4" | "webm";
+  /** 动图目标体积（字节）；null 表示不限制 */
+  animationTargetBytes: number | null;
 
   scope: Scope;
   selectedIds: string[];
@@ -95,6 +99,8 @@ interface MeowState {
   toggleSelect: (id: string, additive: boolean) => void;
   setLinkEnabled: (enabled: boolean) => void;
   setBasis: (basis: Basis) => void;
+  setAnimationToVideo: (value: "none" | "mp4" | "webm") => void;
+  setAnimationTargetBytes: (value: number | null) => void;
   setProcessing: (patch: Partial<Settings["processing"]>) => void;
   setOutput: (patch: Partial<Settings["output"]>) => void;
 
@@ -139,6 +145,8 @@ export const useStore = create<MeowState>((set, get) => ({
 
   linkEnabled: true,
   basis: "selection",
+  animationToVideo: "none",
+  animationTargetBytes: null,
 
   scope: { type: "global" },
   selectedIds: [],
@@ -428,6 +436,13 @@ export const useStore = create<MeowState>((set, get) => ({
     void get().refreshPlan();
   },
 
+  setAnimationToVideo: (value) => {
+    set({ animationToVideo: value });
+    get().log("INFO", value === "none" ? "动图保持原格式输出" : `动图将转为 ${value.toUpperCase()}`);
+  },
+
+  setAnimationTargetBytes: (value) => set({ animationTargetBytes: value }),
+
   setProcessing: (patch) => {
     const settings = get().settings;
     if (!settings) return;
@@ -534,6 +549,12 @@ export const useStore = create<MeowState>((set, get) => ({
           format: state.settings?.output.outputFormat ?? ("keep" as const),
           keepAllMetadata: !(state.settings?.output.stripRedundantMetadata ?? true),
           backgroundFill: state.settings?.output.backgroundFillColor ?? "#FFFFFF",
+        },
+        animation: {
+          colors: state.settings?.processing.gifColors ?? 256,
+          dither: state.settings?.processing.gifDither ?? false,
+          toVideo: state.animationToVideo,
+          targetBytes: state.animationTargetBytes,
         },
         video: {
           codec: (state.settings?.processing.videoEncoder ?? "h264") as VideoCodec,

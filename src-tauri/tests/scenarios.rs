@@ -121,7 +121,9 @@ fn sources_of(files: &[meowfit_lib::scan::ScannedFile]) -> Vec<SourceRef> {
             id: f.id.clone(),
             path: f.path.clone(),
             kind: f.kind.unwrap(),
-        })
+                loop_count: None,
+                ext: None,
+            })
         .collect()
 }
 

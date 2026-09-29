@@ -22,6 +22,12 @@ pub struct SourceRef {
     /// 源文件绝对路径
     pub path: String,
     pub kind: crate::model::MediaKind,
+    /// 动图的循环次数，执行时原样写回；非动图为 None
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loop_count: Option<u32>,
+    /// 动图源扩展名（转视频时要看原格式决定滤镜）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ext: Option<String>,
 }
 
 /// 视频处理参数（规范 6.9）。
@@ -88,6 +94,45 @@ pub struct ExecOptions {
     /// 视频处理参数：编码器、质量、硬件加速、HDR 策略
     #[serde(default)]
     pub video: VideoOptions,
+    /// 动图处理参数：颜色数、抖动、是否转视频（规范 6.10）
+    #[serde(default)]
+    pub animation: AnimationOptions,
+}
+
+/// 动图处理参数（规范 6.10）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnimationOptions {
+    /// 调色板颜色数：256 / 128 / 64
+    #[serde(default = "default_gif_colors")]
+    pub colors: u32,
+    #[serde(default)]
+    pub dither: bool,
+    /// none | mp4 | webm —— 「GIF 转 MP4 / WebM」
+    #[serde(default = "default_to_video")]
+    pub to_video: String,
+    /// 目标体积（字节）；给定时按规范 6.10 的三档策略逐级逼近
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_bytes: Option<u64>,
+}
+
+fn default_gif_colors() -> u32 {
+    256
+}
+
+fn default_to_video() -> String {
+    "none".into()
+}
+
+impl Default for AnimationOptions {
+    fn default() -> Self {
+        Self {
+            colors: default_gif_colors(),
+            dither: false,
+            to_video: default_to_video(),
+            target_bytes: None,
+        }
+    }
 }
 
 fn default_true() -> bool {
@@ -105,6 +150,7 @@ impl Default for ExecOptions {
             on_conflict: default_conflict(),
             image: imaging::ImageOptions::default(),
             video: VideoOptions::default(),
+            animation: AnimationOptions::default(),
         }
     }
 }
@@ -152,7 +198,167 @@ fn supported_kind(kind: crate::model::MediaKind) -> bool {
         crate::model::MediaKind::Raster
             | crate::model::MediaKind::Svg
             | crate::model::MediaKind::Video
+            | crate::model::MediaKind::Animated
     )
+}
+
+/// 用 FFmpeg 处理动图（规范 6.10 / 12.2 / 12.3）。
+///
+/// 输出仍是动图时走调色板链（GIF）或直接缩放（WebP / APNG）；
+/// 输出 mp4 / webm 时按 12.3 转成视频。
+fn encode_animation(
+    paths: Option<&ffmpeg::FfmpegPaths>,
+    source: &SourceRef,
+    out: &Path,
+    target: &crate::model::Computed,
+    opts: &ExecOptions,
+    notes: &mut Vec<String>,
+) -> Result<u64, AppError> {
+    let paths = paths.ok_or_else(|| {
+        AppError::new(
+            ErrorCode::FfmpegMissing,
+            "找不到 FFmpeg，无法处理动图。请把 ffmpeg.exe 与 ffprobe.exe 放到              src-tauri/resources/ffmpeg/win-x64/。"
+                .to_string(),
+        )
+    })?;
+
+    let out_ext = out
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    let job = crate::animate::AnimationJob {
+        input: source.path.clone(),
+        output: out.to_string_lossy().into_owned(),
+        width: target.width,
+        height: target.height,
+        colors: opts.animation.colors,
+        dither: opts.animation.dither,
+        // 循环次数原样写回，保证动画行为不变
+        loop_count: source.loop_count.unwrap_or(0),
+    };
+
+    // 目标体积：按规范 6.10 的三档策略逐级逼近，不得无限循环
+    if let Some(target_bytes) = opts.animation.target_bytes {
+        return shrink_to_target(paths, source, out, target, opts, target_bytes, notes);
+    }
+
+    let args = if matches!(out_ext.as_str(), "mp4" | "mov" | "mkv" | "webm" | "m4v") {
+        let video = ffmpeg::VideoJob {
+            input: job.input.clone(),
+            output: job.output.clone(),
+            width: job.width,
+            height: job.height,
+            encoder: ffmpeg::software_encoder(&opts.video.codec).to_string(),
+            crf: opts.video.crf,
+            preset: opts.video.preset.clone(),
+            hardware: false,
+            tonemap_to_sdr: false,
+            container: ffmpeg::Container::from_ext(&out_ext),
+            video_bitrate_k: None,
+            fps: None,
+        };
+        crate::animate::build_to_video_args(&job, &video)
+    } else {
+        crate::animate::build_resize_args(&job)
+    };
+
+    ffmpeg::run_ffmpeg(paths, &args)?;
+    Ok(fs::metadata(out).map(|m| m.len()).unwrap_or(0))
+}
+
+/// 动图按目标体积逐级逼近（规范 6.10 / 10.7）。
+///
+/// 依次尝试「原参数 → 减色数 → 降尺寸 → 丢帧」，每一档写出并测量实际体积，
+/// 一旦达标就采用该档；全部档位耗尽仍超标时，保留其中体积最小的一次输出，
+/// 并在说明中标注「未达标」——绝不无限循环。
+fn shrink_to_target(
+    paths: &ffmpeg::FfmpegPaths,
+    source: &SourceRef,
+    out: &Path,
+    target: &crate::model::Computed,
+    opts: &ExecOptions,
+    target_bytes: u64,
+    notes: &mut Vec<String>,
+) -> Result<u64, AppError> {
+    let fps = ffmpeg::probe(paths, Path::new(&source.path))
+        .ok()
+        .and_then(|p| p.to_video_info())
+        .map(|i| i.fps)
+        .unwrap_or(0.0);
+
+    let base = crate::animate::AnimationJob {
+        input: source.path.clone(),
+        output: out.to_string_lossy().into_owned(),
+        width: target.width,
+        height: target.height,
+        colors: opts.animation.colors,
+        dither: opts.animation.dither,
+        loop_count: source.loop_count.unwrap_or(0),
+    };
+
+    // 第 0 档是原参数，其后才是阶梯
+    let mut attempts: Vec<(String, crate::animate::AnimationJob)> =
+        vec![("原参数".to_string(), base.clone())];
+    for step in crate::animate::build_ladder(base.colors, fps) {
+        attempts.push((
+            step.label,
+            crate::animate::AnimationJob {
+                width: ((target.width as f64 * step.scale).round() as u32).max(2),
+                height: ((target.height as f64 * step.scale).round() as u32).max(2),
+                colors: step.colors,
+                ..base.clone()
+            },
+        ));
+    }
+
+    let scratch = out.with_extension(format!("meowfit-tmp.{}", out_ext_of(out)));
+    let mut smallest: Option<(u64, String)> = None;
+
+    for (label, job) in &attempts {
+        let job = crate::animate::AnimationJob {
+            output: scratch.to_string_lossy().into_owned(),
+            ..job.clone()
+        };
+        if ffmpeg::run_ffmpeg(paths, &crate::animate::build_resize_args(&job)).is_err() {
+            continue;
+        }
+        let bytes = fs::metadata(&scratch).map(|m| m.len()).unwrap_or(0);
+        notes.push(format!("体积阶梯「{label}」→ {}", bytes));
+        if smallest.as_ref().map(|(b, _)| bytes < *b).unwrap_or(true) {
+            smallest = Some((bytes, label.clone()));
+        }
+        if bytes <= target_bytes {
+            fs::rename(&scratch, out).map_err(|e| AppError::write_failed(format!("写出失败：{e}")))?;
+            notes.push(format!("已在「{label}」档达标（{bytes} ≤ {target_bytes}）"));
+            return Ok(bytes);
+        }
+    }
+    let _ = fs::remove_file(&scratch);
+
+    // 全部档位都不达标：用最小体积的那一档重放一次，并标注未达标
+    let Some((bytes, label)) = smallest else {
+        return Err(AppError::new(
+            ErrorCode::WriteFailed,
+            "体积阶梯的每一档都写不出结果".to_string(),
+        ));
+    };
+    let step = attempts.iter().find(|(l, _)| *l == label).map(|(_, j)| j.clone());
+    if let Some(job) = step {
+        ffmpeg::run_ffmpeg(paths, &crate::animate::build_resize_args(&job))?;
+    }
+    notes.push(format!(
+        "无法达标：最小体积为 {bytes} 字节（档位「{label}」），目标 {target_bytes} 字节"
+    ));
+    Ok(bytes)
+}
+
+fn out_ext_of(path: &Path) -> String {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("gif")
+        .to_string()
 }
 
 /// 用 FFmpeg 编码一个视频；硬件编码失败时自动回退软件编码（规范 6.9）。
@@ -410,11 +616,15 @@ pub fn execute(
             .and_then(|e| e.to_str())
             .unwrap_or("")
             .to_ascii_lowercase();
-        // 视频保持原容器（P3 不做跨容器转换）；图片与 SVG 按格式设置转换
-        let out_ext = if source.kind == crate::model::MediaKind::Video {
-            src_ext.clone()
-        } else {
-            imaging::resolve_output_ext(&src_ext, opts.image.format)
+        // 视频保持原容器；动图转视频时按用户选择换成 mp4 / webm；
+        // 图片与 SVG 按格式设置转换
+        let out_ext = match source.kind {
+            crate::model::MediaKind::Video => src_ext.clone(),
+            crate::model::MediaKind::Animated if opts.animation.to_video != "none" => {
+                opts.animation.to_video.clone()
+            }
+            crate::model::MediaKind::Animated => src_ext.clone(),
+            _ => imaging::resolve_output_ext(&src_ext, opts.image.format),
         };
         let wanted = output_path_for(&output_root, &entry.id, opts.keep_structure, &out_ext);
 
@@ -446,7 +656,16 @@ pub fn execute(
             }
         };
 
-        let result = if source.kind == crate::model::MediaKind::Video {
+        let result = if source.kind == crate::model::MediaKind::Animated {
+            encode_animation(
+                ffmpeg_paths.as_ref(),
+                source,
+                &final_path,
+                &target,
+                opts,
+                &mut notes,
+            )
+        } else if source.kind == crate::model::MediaKind::Video {
             encode_video(
                 ffmpeg_paths.as_ref(),
                 &source.path,
@@ -588,11 +807,15 @@ mod tests {
                 id: "a.png".into(),
                 path: root.join("a.png").to_string_lossy().into_owned(),
                 kind: MediaKind::Raster,
+                loop_count: None,
+                ext: None,
             },
             SourceRef {
                 id: "sub/b.png".into(),
                 path: root.join("sub/b.png").to_string_lossy().into_owned(),
                 kind: MediaKind::Raster,
+                loop_count: None,
+                ext: None,
             },
         ];
 
@@ -655,11 +878,15 @@ mod tests {
                 id: "icon_01.png".into(),
                 path: root.join("icon_01.png").to_string_lossy().into_owned(),
                 kind: MediaKind::Raster,
+                loop_count: None,
+                ext: None,
             },
             SourceRef {
                 id: "bg_01.png".into(),
                 path: root.join("bg_01.png").to_string_lossy().into_owned(),
                 kind: MediaKind::Raster,
+                loop_count: None,
+                ext: None,
             },
         ];
 
@@ -696,7 +923,9 @@ mod tests {
             id: "a.png".into(),
             path: root.join("a.png").to_string_lossy().into_owned(),
             kind: MediaKind::Raster,
-        }];
+                loop_count: None,
+                ext: None,
+            }];
 
         // 先跑一次产生输出
         execute(&plan, &sources, &root, &ExecOptions::default()).unwrap();
@@ -764,7 +993,9 @@ mod tests {
             id: "sub/a.png".into(),
             path: root.join("sub/a.png").to_string_lossy().into_owned(),
             kind: MediaKind::Raster,
-        }];
+                loop_count: None,
+                ext: None,
+            }];
 
         let report = execute(
             &plan,
@@ -824,11 +1055,15 @@ mod tests {
                 id: "wide.png".into(),
                 path: root.join("wide.png").to_string_lossy().into_owned(),
                 kind: MediaKind::Raster,
+                loop_count: None,
+                ext: None,
             },
             SourceRef {
                 id: "wide.jpg".into(),
                 path: root.join("wide.jpg").to_string_lossy().into_owned(),
                 kind: MediaKind::Raster,
+                loop_count: None,
+                ext: None,
             },
         ];
 

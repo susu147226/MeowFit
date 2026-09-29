@@ -112,7 +112,9 @@ fn executing_a_video_without_ffmpeg_fails_loudly() {
         id: "clip.mp4".into(),
         path: root.join("clip.mp4").to_string_lossy().into_owned(),
         kind: meowfit_lib::model::MediaKind::Video,
-    }];
+                loop_count: None,
+                ext: None,
+            }];
 
     let report = meowfit_lib::exec::execute(
         &plan,

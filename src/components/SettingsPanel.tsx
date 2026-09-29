@@ -4,6 +4,7 @@ import { parseDimension, parseScale } from "../lib/expression";
 import { referenceFor } from "../lib/planInput";
 import { useStore } from "../store";
 import { ANCHOR_LABEL, MODES, MODE_LABEL, type Anchor, type Mode, type Setting } from "../types";
+import AnimationOptionsPanel from "./AnimationOptionsPanel";
 import ImageOptionsPanel from "./ImageOptionsPanel";
 import VideoOptionsPanel from "./VideoOptionsPanel";
 import { Button, Checkbox, EmptyHint, Field, Panel, Select, Tag, TextInput } from "./ui";
@@ -165,6 +166,7 @@ export default function SettingsPanel({
           </EmptyHint>
           <ImageOptionsPanel />
           <VideoOptionsPanel />
+          <AnimationOptionsPanel />
         </div>
       </Panel>
     );
@@ -442,6 +444,7 @@ export default function SettingsPanel({
 
         <ImageOptionsPanel />
         <VideoOptionsPanel />
+        <AnimationOptionsPanel />
       </div>
     </Panel>
   );

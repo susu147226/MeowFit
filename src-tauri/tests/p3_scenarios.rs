@@ -195,7 +195,9 @@ fn run_with(
             id: f.id.clone(),
             path: f.path.clone(),
             kind: f.kind.unwrap(),
-        })
+                loop_count: None,
+                ext: None,
+            })
         .collect();
 
     execute(

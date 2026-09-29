@@ -98,6 +98,28 @@ export interface VideoInfo {
   pixFmt: string | null;
 }
 
+/** 动图附加信息（规范 6.10） */
+export interface AnimationInfo {
+  width: number;
+  height: number;
+  /** 帧数；null 表示无法确定 */
+  frames: number | null;
+  /** 循环次数；0 表示无限循环 */
+  loopCount: number;
+  hasAlpha: boolean;
+}
+
+/** 动图处理参数（规范 6.10） */
+export interface AnimationOptions {
+  /** 调色板颜色数：256 / 128 / 64 */
+  colors: number;
+  dither: boolean;
+  /** none | mp4 | webm —— 「GIF 转 MP4 / WebM」 */
+  toVideo: "none" | "mp4" | "webm";
+  /** 目标体积（字节）；给定时按三档策略逼近 */
+  targetBytes?: number | null;
+}
+
 /** 视频编码器（规范 6.9：四种全部提供） */
 export type VideoCodec = "h264" | "h265" | "vp9" | "av1";
 /** 硬件加速实现（规范 6.9） */
@@ -129,6 +151,8 @@ export interface ScannedFile {
   svgDeclared: boolean;
   /** 视频附加信息，仅视频文件有 */
   video?: VideoInfo;
+  /** 动图附加信息，仅动图有 */
+  animation?: AnimationInfo;
   skipReason: string | null;
 }
 
@@ -174,6 +198,9 @@ export interface SourceRef {
   id: string;
   path: string;
   kind: MediaKind;
+  /** 动图循环次数，执行时原样写回 */
+  loopCount?: number;
+  ext?: string;
 }
 
 export interface ExecOptions {
@@ -182,6 +209,7 @@ export interface ExecOptions {
   onConflict: "skip" | "overwrite" | "rename";
   image: ImageOptions;
   video: VideoOptions;
+  animation: AnimationOptions;
 }
 
 export interface FileOutcome {
@@ -347,6 +375,8 @@ export const CODEC_LABEL: Record<VideoCodec, string> = {
   vp9: "VP9",
   av1: "AV1（压缩率最高，编码较慢）",
 };
+
+export const GIF_COLORS: number[] = [256, 128, 64];
 
 export const ACCEL_LABEL: Record<VideoAccel, string> = {
   nvenc: "NVIDIA NVENC",

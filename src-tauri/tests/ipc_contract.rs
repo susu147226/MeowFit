@@ -252,7 +252,9 @@ fn command_layer_end_to_end() {
             id: f.id.clone(),
             path: f.path.clone(),
             kind: f.kind.unwrap(),
-        })
+                loop_count: None,
+                ext: None,
+            })
         .collect();
 
     let report = commands::execute_plan(request, sources, None, root_str).expect("执行应成功");
@@ -300,7 +302,9 @@ fn command_layer_refuses_invalid_plan() {
         id: "a.png".into(),
         path: root.join("a.png").to_string_lossy().into_owned(),
         kind: meowfit_lib::model::MediaKind::Raster,
-    }];
+                loop_count: None,
+                ext: None,
+            }];
     let err = commands::execute_plan(request, sources, None, root_str).unwrap_err();
     assert!(err.contains("校验失败"), "实际错误：{err}");
 

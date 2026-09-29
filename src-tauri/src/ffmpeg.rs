@@ -110,6 +110,8 @@ pub struct ProbeStream {
     #[serde(default)]
     pub pix_fmt: Option<String>,
     #[serde(default)]
+    pub nb_frames: Option<String>,
+    #[serde(default)]
     pub tags: Option<serde_json::Value>,
     #[serde(default)]
     pub side_data_list: Option<Vec<serde_json::Value>>,

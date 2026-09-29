@@ -143,7 +143,9 @@ fn run_with(
             id: f.id.clone(),
             path: f.path.clone(),
             kind: f.kind.unwrap(),
-        })
+                loop_count: None,
+                ext: None,
+            })
         .collect();
 
     execute(
@@ -255,7 +257,9 @@ fn scenario_9_resample_choice_changes_output_pixels() {
             id: "board.png".into(),
             path: result.files[0].path.clone(),
             kind: result.files[0].kind.unwrap(),
-        }];
+                loop_count: None,
+                ext: None,
+            }];
         let report = execute(&plan, &sources, &root, &opts).unwrap();
         let out = PathBuf::from(&report.output_dir).join("board.png");
         let _ = tag;
