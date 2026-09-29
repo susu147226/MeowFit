@@ -292,7 +292,24 @@ pub fn save_settings(
 /// 找不到二进制时如实返回 `ffmpegFound: false` 与缺失清单，不抛错——
 /// 界面需要据此提示用户，而不是让整个程序不可用。
 #[tauri::command]
-pub fn ffmpeg_self_check() -> crate::ffmpeg::SelfCheckReport {
+pub fn ffmpeg_self_check(state: State<'_, AppState>) -> crate::ffmpeg::SelfCheckReport {
+    let report = self_check_report();
+    let level = if report.ffmpeg_found
+        && report.missing_encoders.is_empty()
+        && report.missing_filters.is_empty()
+        && !report.missing_hevc_decoder
+    {
+        "INFO"
+    } else {
+        "ERROR"
+    };
+    // 自检结果落盘：出问题时能直接看日志，而不用凭现象猜
+    let _ = crate::logging::append(&state.config_dir, level, &report.summary);
+    report
+}
+
+/// 自检逻辑本体（与 Tauri 状态无关，便于测试直接调用）。
+pub fn self_check_report() -> crate::ffmpeg::SelfCheckReport {
     match crate::ffmpeg::resolve_paths() {
         Ok(paths) => crate::ffmpeg::self_check(&paths),
         Err(err) => crate::ffmpeg::SelfCheckReport {

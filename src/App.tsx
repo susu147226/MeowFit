@@ -215,7 +215,7 @@ export default function App() {
 
         {/* 主工作区：列与列内分区都由用户拖动排布 */}
         <PanelDragContext.Provider value={{ start: startDrag, draggingId: dragPanel }}>
-          <div ref={workAreaRef} className="relative flex min-h-0 flex-1 bg-surface">
+          <div ref={workAreaRef} className="relative flex min-h-0 flex-1 overflow-hidden bg-surface">
             {/* 新建列的落点提示 */}
             {dragPanel && dropTarget?.kind === "new-column" && (
               <div
@@ -228,7 +228,10 @@ export default function App() {
             )}
 
             {shown.columns.map((column, columnIndex) => (
-              <div key={column.id} className="flex min-h-0 min-w-0">
+              // 列必须是工作区的直接子元素。此前多套了一层 `min-w-0` 的包装 div，
+              // 它能被压缩到 0，而列本身是 shrink-0 的固定宽度，于是列内容溢出包装、
+              // 后续列按压扁后的位置排布，直接压在上一列上。
+              <Fragment key={column.id}>
                 {columnIndex > 0 && (
                   <Splitter
                     orientation="vertical"
@@ -254,7 +257,7 @@ export default function App() {
 
                 <div
                   data-column-id={column.id}
-                  className={`flex min-h-0 min-w-0 flex-col ${column.width === null ? "flex-1" : "shrink-0"}`}
+                  className={`flex min-h-0 flex-col ${column.width === null ? "min-w-0 flex-1" : "shrink-0"}`}
                   style={column.width === null ? undefined : { width: column.width }}
                 >
                   {column.panels.map((panelId, index) => (
@@ -295,7 +298,7 @@ export default function App() {
                       <div className="h-[2px] shrink-0 bg-accent" />
                     )}
                 </div>
-              </div>
+              </Fragment>
             ))}
           </div>
         </PanelDragContext.Provider>

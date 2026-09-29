@@ -712,8 +712,8 @@ fn encode_video(
     let paths = paths.ok_or_else(|| {
         AppError::new(
             ErrorCode::FfmpegMissing,
-            "找不到 FFmpeg，无法处理视频。请把 ffmpeg.exe 与 ffprobe.exe 放到 \
-             src-tauri/resources/ffmpeg/win-x64/（打包后为 程序目录/resources/ffmpeg/win-x64/）。"
+            "找不到 FFmpeg，无法处理视频。请确认「程序目录/resources/ffmpeg/win-x64/」\
+             下存在 ffmpeg.exe 与 ffprobe.exe；若缺失说明安装包不完整，请重新下载安装。"
                 .to_string(),
         )
     })?;

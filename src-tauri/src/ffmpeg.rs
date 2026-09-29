@@ -70,8 +70,16 @@ pub fn resolve_paths() -> Result<FfmpegPaths, AppError> {
 
     Err(AppError::new(
         ErrorCode::FfmpegMissing,
-        "找不到 FFmpeg。请把 GPL 构建的 ffmpeg.exe 与 ffprobe.exe 放到 \
-         src-tauri/resources/ffmpeg/win-x64/（打包后为 程序目录/resources/ffmpeg/win-x64/）。",
+        format!(
+            "找不到 FFmpeg，视频与动图将无法处理。\
+             随包分发的 FFmpeg 应位于「程序目录/resources/ffmpeg/win-x64/」（当前程序目录：{}）。\
+             若该目录不存在或内容不全，说明安装包不完整——请重新下载并安装，\
+             注意不要只把 MeowFit.exe 单独拷出来运行，它需要同级的 resources/ 目录。\
+             开发环境下也可把 ffmpeg.exe / ffprobe.exe 放到 src-tauri/resources/ffmpeg/win-x64/。",
+            exe_dir()
+                .map(|d| d.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "未知".into())
+        ),
     ))
 }
 

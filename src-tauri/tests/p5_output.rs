@@ -8,7 +8,7 @@ use image::{Rgb, RgbImage};
 use meowfit_lib::algo::grouping::{group_files, GroupableFile};
 use meowfit_lib::algo::plan::build_plan;
 use meowfit_lib::exec::{execute, ExecOptions, SourceRef};
-use meowfit_lib::imaging::{ImageOptions, OutputFormat};
+use meowfit_lib::imaging::ImageOptions;
 use meowfit_lib::model::{Grouping, Mode, PlanFileInput, PlanRequest, Setting};
 use meowfit_lib::scan::{scan_folder, ScannedFile, ScanOptions};
 

@@ -64,7 +64,7 @@ fn videos_are_skipped_with_a_clear_reason_when_ffmpeg_is_absent() {
 /// FFmpeg 自检命令在任何环境下都必须返回结果（而不是抛错让界面无从提示）。
 #[test]
 fn self_check_command_always_returns_a_report() {
-    let report = commands::ffmpeg_self_check();
+    let report = commands::self_check_report();
     if !report.ffmpeg_found {
         // 未找到时必须给出可操作的说明与完整缺失清单
         assert!(report.summary.contains("FFmpeg"), "实际：{}", report.summary);
