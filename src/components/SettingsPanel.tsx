@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { parseDimension, parseScale } from "../lib/expression";
 import { referenceFor } from "../lib/planInput";
@@ -97,12 +97,23 @@ export default function SettingsPanel({
   const [scaleText, setScaleText] = useState("");
   const [widthText, setWidthText] = useState("");
   const [heightText, setHeightText] = useState("");
+  // 标记「这次作用域设置的变化是用户自己输入提交的」，回填 effect 据此跳过，
+  // 避免把用户正在输入的内容（如「1.」）用已提交的数值覆盖掉。
+  const selfCommittedRef = useRef(false);
 
+  // 只在作用域「外部」发生变化时回填输入框。用户自己输入提交时跳过——
+  // 否则输入「1.」会被当作 1 提交、随即被回写覆盖，小数点被吞，大于 1 的小数打不出来。
   useEffect(() => {
+    if (selfCommittedRef.current) return;
     setMode(scopeSetting?.mode ?? "A");
     setScaleText(scopeSetting?.scale !== undefined ? String(scopeSetting.scale) : "");
     setWidthText(scopeSetting?.width !== undefined ? String(scopeSetting.width) : "");
     setHeightText(scopeSetting?.height !== undefined ? String(scopeSetting.height) : "");
+  }, [scope, scopeSetting]);
+
+  // 回填 effect 跑完后重置标记，让下一次外部变化（预设 / 清除 / 切换作用域）能正常回填
+  useEffect(() => {
+    selfCommittedRef.current = false;
   }, [scope, scopeSetting]);
 
   const apply = (next: Setting) => {
@@ -111,7 +122,10 @@ export default function SettingsPanel({
     else setFileSetting(scope.id, next);
   };
 
-  const commit = (patch: Partial<Setting>) => apply({ ...(scopeSetting ?? { mode }), ...patch });
+  const commit = (patch: Partial<Setting>) => {
+    selfCommittedRef.current = true;
+    apply({ ...(scopeSetting ?? { mode }), ...patch });
+  };
 
   /** 模式 A/G 里填目标宽高时，按基准折算成等效倍率（规范 6.3 的两种输入）。 */
   const applyEquivalentScale = (width: number | null, height: number | null) => {
@@ -170,7 +184,6 @@ export default function SettingsPanel({
           <VideoOptionsPanel />
           <AnimationOptionsPanel />
           <OutputSettingsPanel />
-        <OutputSettingsPanel />
         </div>
       </Panel>
     );
