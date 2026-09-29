@@ -7,15 +7,16 @@
 
 本仓库为**源码可见的专有软件**。许可条款见 [LICENSE](LICENSE)。
 
-> **当前状态：开发中（P3 阶段已完成）。**
+> **当前状态：开发中（P3 阶段已完成，验收场景 1–16 均已实测通过）。**
 > 已可用：素材导入与扫描（递归 / 仅当前层、包含排除通配符、最近文件夹）、三种自动分组与手动修正、
 > 三级参数优先级、尺寸计算（模式 A–G）、实时预览；静态位图处理（重采样算法可选、EXIF 方向校正、
 > ICC 保留、元数据开关、格式转换、SVG 改写属性或按像素尺寸光栅化）；视频处理（H.264 / H.265 /
 > VP9 / AV1、CRF、音频直接复制、字幕与章节保留、旋转元数据、HDR 传递或色调映射、硬件加速与回退）；
-> 外观设置（跟随系统、配色、背景图、布局个性化）。
+> 外观设置（跟随系统、配色、背景图、拖拽自定义布局）。
 > 尚未接入：动图（P4）、体积目标与报告导出（P5）、打包与图标（P6）。
 >
-> **视频功能需要 FFmpeg**：本仓库不附带二进制，请按下方「FFmpeg」一节放置后再使用视频相关功能。
+> **视频功能需要 FFmpeg**：仓库不附带二进制，可用 `scripts/build-ffmpeg-gpl.sh` 自行构建，
+> 或按下方「FFmpeg」一节放置。
 
 ---
 
@@ -86,8 +87,13 @@ npm run tauri build
 ```
 src-tauri/resources/ffmpeg/win-x64/
 ├── ffmpeg.exe
-└── ffprobe.exe
+├── ffprobe.exe
+└── libgcc_s_seh-1.dll      # 静态构建后仅剩的运行时依赖（GCC 运行时）
 ```
+
+**获取方式：** 仓库不附带二进制（体积较大）。可用 `scripts/build-ffmpeg-gpl.sh` 自行构建，
+该脚本在 MSYS2 MINGW64 下运行，产出 FFmpeg **9.0.2**，静态链接 libx264 / libx265 /
+libvpx / libaom / zimg / libwebp。脚本头部写明了完整的依赖安装命令与注意事项。
 
 打包前需完成 FFmpeg 构建自检，确认所用构建包含 `libx264`、`libx265`、
 `libvpx-vp9`、`libaom-av1` 编码器，`palettegen`、`paletteuse`、`zscale`、
@@ -106,7 +112,17 @@ src-tauri/resources/ffmpeg/win-x64/
 **随包的 FFmpeg**：本软件包内 `resources/ffmpeg/` 目录下的 FFmpeg 可执行文件为独立的第三方程序，
 适用 **GPL** 许可证，**不受本项目私有许可证约束**。GPL 赋予您对该 FFmpeg 部分的复制与再分发权利；
 该权利仅作用于 FFmpeg 文件本身，不延伸至喵尺 MeowFit 的其他文件。
-FFmpeg 完整源码获取地址：`【构建时填入所采用的上游发行地址】`。
+
+FFmpeg 完整源码获取地址（含随包构建所启用的全部组件）：
+
+- FFmpeg 9.0.2 — https://ffmpeg.org/releases/
+- x264 — https://code.videolan.org/videolan/x264
+- x265 4.3 — https://bitbucket.org/multicoreware/x265_git
+- libvpx 1.17.0 — https://chromium.googlesource.com/webm/libvpx
+- libaom 3.15.1 — https://aomedia.googlesource.com/aom
+- zimg 3.0.6 — https://github.com/sekrit-twc/zimg
+- libwebp 1.6.0 — https://chromium.googlesource.com/webm/libwebp
+- MSYS2 各依赖包的构建配方 — https://github.com/msys2/MINGW-packages
 
 ---
 
