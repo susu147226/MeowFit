@@ -1,9 +1,8 @@
 import { create } from "zustand";
 
 import { api } from "./api";
+import { buildRequest, coalesce, type Basis, type Scope } from "./lib/planInput";
 import { accentPalette } from "./lib/color";
-import { linkDimension } from "./lib/expression";
-import { dimsOf } from "./lib/svgDims";
 import type {
   AppInfo,
   ExecReport,
@@ -12,14 +11,10 @@ import type {
   GroupTierState,
   Grouping,
   Plan,
-  PlanFileInput,
-  PlanGroupInput,
-  PlanRequest,
   ScanOptions,
   ScannedFile,
   Setting,
   Settings,
-  SourceRef,
   VideoCodec,
 } from "./types";
 
@@ -29,14 +24,7 @@ export interface LogEntry {
   message: string;
 }
 
-/** 编辑作用域：整体 / 某个分组 / 某个单文件（规范 6.3「每个可设置位置」）。 */
-export type Scope =
-  | { type: "global" }
-  | { type: "group"; name: string }
-  | { type: "file"; id: string };
-
-/** 「按比例自动计算」的基准来源（规范 6.3 的批量填充基准）。 */
-export type Basis = "selection" | "groupMax" | "groupMin";
+export type { Basis, Scope };
 
 const MAX_LOGS = 500;
 
@@ -116,146 +104,8 @@ interface MeowState {
   checkFfmpeg: () => Promise<void>;
 }
 
-type StateSlice = Pick<
-  MeowState,
-  | "files"
-  | "groups"
-  | "scope"
-  | "selectedIds"
-  | "basis"
-  | "linkEnabled"
-  | "globalSetting"
-  | "groupTiers"
-  | "fileSettings"
-  | "settings"
->;
-
 function nowTime(): string {
   return new Date().toLocaleTimeString("zh-CN", { hour12: false });
-}
-
-/**
- * 参与计算的目标基准尺寸，实现在 `lib/svgDims.ts`（纯函数，便于单独测试）。
- */
-export { dimsOf } from "./lib/svgDims";
-
-/** 可参与处理的素材：有尺寸、且扫描阶段未被标记跳过。 */
-export function processable(files: ScannedFile[]): ScannedFile[] {
-  return files.filter((f) => f.skipReason === null && f.width !== null && f.height !== null);
-}
-
-/** 把「只填了一边」的参数按基准尺寸补齐另一边（规范 6.3 的「按比例自动计算」）。
- *
- * 关闭联动时不补齐，交由 Rust 侧按 13.2 报 `E_INCOMPLETE_DIMENSION` 并指明缺哪一边，
- * 保证该错误只有一份实现。
- */
-function materialize(setting: Setting, reference: { width: number; height: number }): Setting {
-  if (setting.mode !== "B" && setting.mode !== "C" && setting.mode !== "D") {
-    return setting;
-  }
-  const linked = linkDimension(reference, setting.width ?? null, setting.height ?? null);
-  return { ...setting, width: linked.width ?? undefined, height: linked.height ?? undefined };
-}
-
-/** 依据作用域与基准选项，取出用于「按比例自动计算」的参考尺寸（规范 6.3）。 */
-export function referenceFor(state: StateSlice, scope: Scope): { width: number; height: number } {
-  if (scope.type === "file") {
-    const file = state.files.find((f) => f.id === scope.id);
-    if (file?.width && file?.height) return dimsOf(file, state.settings);
-  }
-
-  const groupFiles =
-    scope.type === "group"
-      ? state.groups.find((g) => g.name === scope.name)?.fileIds ?? []
-      : null;
-
-  const pool = processable(state.files).filter((f) => (groupFiles ? groupFiles.includes(f.id) : true));
-
-  if (state.basis === "selection") {
-    const selected = pool.find((f) => state.selectedIds.includes(f.id));
-    if (selected) return dimsOf(selected, state.settings);
-  } else if (pool.length > 0) {
-    const sizes = pool.map((f) => {
-      const d = dimsOf(f, state.settings);
-      return d.width * d.height;
-    });
-    const target = state.basis === "groupMax" ? Math.max(...sizes) : Math.min(...sizes);
-    const picked = pool[sizes.indexOf(target)];
-    if (picked) return dimsOf(picked, state.settings);
-  }
-
-  const fallback = pool[0];
-  if (fallback) return dimsOf(fallback, state.settings);
-  return { width: 0, height: 0 };
-}
-
-/** 由当前界面状态构建任务计划请求。预览与执行共用，保证两者看到的是同一套参数。 */
-function buildRequest(state: StateSlice): { request: PlanRequest; sources: SourceRef[] } {
-  const files = processable(state.files);
-  const link = state.linkEnabled;
-
-  const groupOf = new Map<string, string>();
-  for (const group of state.groups) {
-    for (const id of group.fileIds) groupOf.set(id, group.name);
-  }
-
-  const globalRef = referenceFor(state, state.scope);
-  const global = state.globalSetting
-    ? link
-      ? materialize(state.globalSetting, globalRef)
-      : state.globalSetting
-    : null;
-
-  const planFiles: PlanFileInput[] = files.map((f) => {
-    const own = state.fileSettings[f.id];
-    const group = groupOf.get(f.id) ?? "";
-    const setting = own
-      ? link
-        ? materialize(own, referenceFor(state, { type: "group", name: group }))
-        : own
-      : null;
-    const dims = dimsOf(f, state.settings);
-    return {
-      id: f.id,
-      name: f.name,
-      width: dims.width,
-      height: dims.height,
-      isVideo: f.kind === "video",
-      group,
-      setting,
-    };
-  });
-
-  const planGroups: PlanGroupInput[] = state.groups.map((g) => {
-    const tier = state.groupTiers[g.name] ?? null;
-    if (tier && tier.kind === "explicit" && link) {
-      const ref = referenceFor(state, { type: "group", name: g.name });
-      return { name: g.name, setting: { kind: "explicit", setting: materialize(tier.setting, ref) } };
-    }
-    return { name: g.name, setting: tier };
-  });
-
-  const sources: SourceRef[] = files.map((f) => ({
-    id: f.id,
-    path: f.path,
-    kind: f.kind as SourceRef["kind"],
-  }));
-
-  return { request: { files: planFiles, groups: planGroups, global }, sources };
-}
-
-/** 合并同名分组，避免重命名 / 合并后出现两组同名。 */
-function coalesce(groups: Group[]): Group[] {
-  const merged: Group[] = [];
-  for (const group of groups) {
-    const existing = merged.find((g) => g.name === group.name);
-    if (existing) {
-      existing.fileIds = [...new Set([...existing.fileIds, ...group.fileIds])];
-    } else {
-      merged.push({ ...group });
-    }
-  }
-  return merged;
 }
 
 export const useStore = create<MeowState>((set, get) => ({

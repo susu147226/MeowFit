@@ -7,7 +7,7 @@ import {
   parseNumberInput,
   parseScale,
 } from "../../src/lib/expression";
-import { dimsOf } from "../../src/lib/svgDims";
+import { dimsOf } from "../../src/lib/planInput";
 
 describe("parseNumberInput（规范 6.3 的参数输入）", () => {
   it("接受纯数字与小数", () => {

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
-import { processable, useStore } from "../store";
+import { processable } from "../lib/planInput";
+import { useStore } from "../store";
 import {
   GROUPING_LABEL,
   MODE_SHORT,

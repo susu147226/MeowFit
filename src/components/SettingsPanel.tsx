@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 
 import { parseDimension, parseScale } from "../lib/expression";
-import { referenceFor, useStore } from "../store";
+import { referenceFor } from "../lib/planInput";
+import { useStore } from "../store";
 import { ANCHOR_LABEL, MODES, MODE_LABEL, type Anchor, type Mode, type Setting } from "../types";
 import ImageOptionsPanel from "./ImageOptionsPanel";
 import VideoOptionsPanel from "./VideoOptionsPanel";
@@ -18,6 +19,38 @@ const ANCHORS: Anchor[] = [
   "bottom",
   "bottomRight",
 ];
+
+/**
+ * 切换缩放方式时，只带走新方式用得上的参数。
+ *
+ * 带着上一种方式的不完整参数会让新方式一上来就是非法状态（例如从只填了宽度的
+ * 模式 B 切到模式 A，宽度留着但缺倍率），于是报错一直挂着不消失。
+ */
+function settingForMode(next: Mode, prev: Setting | null): Setting {
+  const out: Setting = { mode: next };
+  if (!prev) return out;
+
+  if (prev.onlyUp) out.onlyUp = true;
+  if (prev.onlyDown) out.onlyDown = true;
+
+  if (next === "A" || next === "G") {
+    if (prev.scale !== undefined) {
+      out.scale = prev.scale;
+    } else if (prev.width !== undefined || prev.height !== undefined) {
+      // 从「自定义宽高」切过来：把宽高折算成等效倍率，保留用户的意图
+      out.width = prev.width;
+      out.height = prev.height;
+    }
+    if (next === "G") out.anchor = prev.anchor ?? "center";
+  } else if (next === "B" || next === "C" || next === "D") {
+    if (prev.width !== undefined) out.width = prev.width;
+    if (prev.height !== undefined) out.height = prev.height;
+    if (next === "B" && prev.noPad) out.noPad = true;
+  } else if (next === "E") {
+    if (prev.limit !== undefined) out.limit = prev.limit;
+  }
+  return out;
+}
 
 export default function SettingsPanel({
   className = "",
@@ -41,6 +74,8 @@ export default function SettingsPanel({
   const setFileSetting = useStore((s) => s.setFileSetting);
   const setLinkEnabled = useStore((s) => s.setLinkEnabled);
   const setBasis = useStore((s) => s.setBasis);
+  const setScope = useStore((s) => s.setScope);
+  const selectedIds = useStore((s) => s.selectedIds);
   const clearAllSettings = useStore((s) => s.clearAllSettings);
 
   const reference = referenceFor(useStore(), scope);
@@ -75,6 +110,18 @@ export default function SettingsPanel({
 
   const commit = (patch: Partial<Setting>) => apply({ ...(scopeSetting ?? { mode }), ...patch });
 
+  /** 模式 A/G 里填目标宽高时，按基准折算成等效倍率（规范 6.3 的两种输入）。 */
+  const applyEquivalentScale = (width: number | null, height: number | null) => {
+    if (reference.width <= 0 || reference.height <= 0) return;
+    const candidates: number[] = [];
+    if (width !== null) candidates.push(width / reference.width);
+    if (height !== null) candidates.push(height / reference.height);
+    if (candidates.length === 0) return;
+    const scale = Math.min(...candidates);
+    commit({ scale });
+    setScaleText(String(Number(scale.toFixed(4))));
+  };
+
   const clearScope = () => {
     if (scope.type === "global") setGlobalSetting(null);
     else if (scope.type === "group") setGroupTier(scope.name, null);
@@ -83,13 +130,6 @@ export default function SettingsPanel({
 
   const groupName =
     scope.type === "file" ? groups.find((g) => g.fileIds.includes(scope.id))?.name : undefined;
-  const scopeLabel =
-    scope.type === "global"
-      ? "整体"
-      : scope.type === "group"
-        ? `分组 ${scope.name}`
-        : (files.find((f) => f.id === scope.id)?.relativePath ?? scope.id);
-
   const scaleResult = parseScale(scaleText);
   const widthResult = parseDimension(widthText);
   const heightResult = parseDimension(heightText);
@@ -146,15 +186,43 @@ export default function SettingsPanel({
       }
     >
       <div className="panel-body space-y-3">
+        {/* 作用域：一眼可选「整体 / 某分组 / 某文件」，避免改了某个分组却以为改了整体 */}
+        <Field
+          label="作用域"
+          hint="设置只作用于所选作用域：单文件 > 分组 > 整体，未设置的层会向下继承"
+        >
+          <Select
+            value={
+              scope.type === "global"
+                ? "global"
+                : scope.type === "group"
+                  ? `group:${scope.name}`
+                  : `file:${scope.id}`
+            }
+            onChange={(value) => {
+              if (value === "global") setScope({ type: "global" });
+              else if (value.startsWith("group:")) setScope({ type: "group", name: value.slice(6) });
+              else setScope({ type: "file", id: value.slice(5) });
+            }}
+            options={[
+              { value: "global", label: `整体（全部 ${files.length} 个素材）` },
+              ...groups.map((g) => ({
+                value: `group:${g.name}`,
+                label: `分组 ${g.name}（${g.fileIds.length} 个）`,
+              })),
+              ...selectedIds.map((id) => ({
+                value: `file:${id}`,
+                label: `单文件 ${files.find((f) => f.id === id)?.relativePath ?? id}`,
+              })),
+            ]}
+          />
+        </Field>
+
         <div className="flex flex-wrap items-center gap-1.5">
-          <span
-            className="max-w-full truncate rounded-md bg-surface-3 px-2 py-0.5 text-[11px] text-muted"
-            title={scopeLabel}
-          >
-            {scopeLabel}
-          </span>
           {scopeSetting && <Tag tone="accent">本层已设置</Tag>}
-          {groupName && <Tag>属于 {groupName}</Tag>}
+          {scope.type === "group" && tier?.kind === "followGlobal" && <Tag>跟随整体</Tag>}
+          {groupName && scope.type === "file" && <Tag>属于 {groupName}</Tag>}
+          {scope.type !== "global" && !scopeSetting && <Tag>未设置，继承上一层</Tag>}
         </div>
 
         {/* 三态：未设置 / 跟随整体 / 已设置（规范 6.4） */}
@@ -187,7 +255,7 @@ export default function SettingsPanel({
                 title={MODE_LABEL[m]}
                 onClick={() => {
                   setMode(m);
-                  apply({ ...(scopeSetting ?? { mode: m }), mode: m });
+                  apply(settingForMode(m, scopeSetting));
                 }}
                 className={`truncate rounded-md border px-2 py-1.5 text-left text-[11px] transition ${
                   mode === m
@@ -202,36 +270,65 @@ export default function SettingsPanel({
         </div>
 
         {(mode === "A" || mode === "G") && (
-          <Field
-            label="缩放倍率"
-            hint={
-              reference.width > 0 ? (
-                <>
-                  基准 {reference.width}×{reference.height}
-                  {scaleResult.value !== null && (
-                    <>
-                      {" → "}
-                      <span className="font-mono text-muted">
-                        {Math.round(reference.width * scaleResult.value)}×
-                        {Math.round(reference.height * scaleResult.value)}
-                      </span>
-                    </>
-                  )}
-                </>
-              ) : null
-            }
-          >
-            <TextInput
-              value={scaleText}
-              invalid={scaleText !== "" && scaleResult.error !== null}
-              placeholder="2、0.5、150%、1920/2"
-              onChange={(text) => {
-                setScaleText(text);
-                const parsed = parseScale(text);
-                if (parsed.value !== null) commit({ scale: parsed.value });
-              }}
-            />
-          </Field>
+          <div className="space-y-2">
+            <Field
+              label="缩放倍率"
+              hint={
+                reference.width > 0 ? (
+                  <>
+                    基准 {reference.width}×{reference.height}
+                    {scaleResult.value !== null && (
+                      <>
+                        {" → "}
+                        <span className="font-mono text-muted">
+                          {Math.round(reference.width * scaleResult.value)}×
+                          {Math.round(reference.height * scaleResult.value)}
+                        </span>
+                      </>
+                    )}
+                  </>
+                ) : null
+              }
+            >
+              <TextInput
+                value={scaleText}
+                invalid={scaleText !== "" && scaleResult.error !== null}
+                placeholder="2、0.5、150%、1920/2"
+                onChange={(text) => {
+                  setScaleText(text);
+                  const parsed = parseScale(text);
+                  if (parsed.value !== null) commit({ scale: parsed.value });
+                }}
+              />
+            </Field>
+
+            {/* 规范 6.3：每个可设置位置都支持「倍率」与「自定义宽高」两种输入 */}
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="或填目标宽">
+                <TextInput
+                  value={widthText}
+                  placeholder="1920"
+                  onChange={(text) => {
+                    setWidthText(text);
+                    applyEquivalentScale(parseDimension(text).value, heightResult.value);
+                  }}
+                />
+              </Field>
+              <Field label="或填目标高">
+                <TextInput
+                  value={heightText}
+                  placeholder="1080"
+                  onChange={(text) => {
+                    setHeightText(text);
+                    applyEquivalentScale(widthResult.value, parseDimension(text).value);
+                  }}
+                />
+              </Field>
+            </div>
+            <p className="text-[11px] leading-relaxed text-faint">
+              填宽或高会按基准折算出等效倍率；两边都填时取能同时装下两者的倍率。等比缩放不补边。
+            </p>
+          </div>
         )}
 
         {mode === "E" && (
