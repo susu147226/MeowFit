@@ -24,25 +24,16 @@ export default function App() {
       <TopBar />
       <ScanBar />
 
-      <div className="flex min-h-0 flex-1">
-        {/* 素材列表区 */}
-        <FileList />
-
-        {/* 参数设置区 / 预览区 / 执行与进度区 */}
-        <div className="flex w-[470px] shrink-0 flex-col overflow-hidden border-l border-border">
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <SettingsPanel />
-          </div>
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            <PreviewPanel />
-          </div>
-          <div className="flex max-h-[38%] min-h-0 flex-col overflow-hidden">
-            <RunPanel />
-          </div>
+      {/* 主工作区：素材列表区 ｜ 参数设置区 ｜ 预览区 + 执行与进度区（规范第七节） */}
+      <div className="flex min-h-0 flex-1 bg-surface">
+        <FileList className="min-w-[260px] flex-1" />
+        <SettingsPanel className="w-[350px] shrink-0 border-l border-border" />
+        <div className="flex w-[350px] shrink-0 flex-col border-l border-border">
+          <PreviewPanel className="min-h-0 flex-1" />
+          <RunPanel className="max-h-[46%] shrink-0 border-t border-border" />
         </div>
       </div>
 
-      {/* 日志区 */}
       <LogPanel />
 
       {aboutOpen && <AboutDialog />}

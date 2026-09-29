@@ -18,6 +18,23 @@ export type Status = "success" | "unchanged" | "skipped" | "failed";
 export type SettingSource = "file" | "group" | "global" | "none";
 export type ConfigMode = "portable" | "installed" | "temporary";
 
+/** 重采样算法（规范 6.8，默认 Lanczos3） */
+export type Resample = "lanczos3" | "bicubic" | "bilinear" | "nearest";
+/** 输出格式（规范 6.8） */
+export type OutputFormat = "keep" | "png" | "jpeg" | "webp";
+/** 未声明尺寸的 SVG 取基准的方式（规范 10.5） */
+export type SvgSizeMode = "pixel" | "dpi";
+
+export interface ImageOptions {
+  resample: Resample;
+  /** 质量参数，仅对 JPEG 生效；WebP 目前为无损编码（规范 6.8 / 5.4） */
+  quality: number;
+  format: OutputFormat;
+  /** true = 保留全部元数据（含缩略图等冗余数据） */
+  keepAllMetadata: boolean;
+  backgroundFill: string;
+}
+
 /** 一层缩放参数（规范 6.2 / 6.3） */
 export interface Setting {
   mode: Mode;
@@ -78,6 +95,8 @@ export interface ScannedFile {
   mtimeMs: number;
   width: number | null;
   height: number | null;
+  /** 仅对 SVG 有意义：根元素是否声明了 width / height（规范 10.5） */
+  svgDeclared: boolean;
   skipReason: string | null;
 }
 
@@ -129,7 +148,7 @@ export interface ExecOptions {
   outputDir: string | null;
   keepStructure: boolean;
   onConflict: "skip" | "overwrite" | "rename";
-  backgroundFillColor: string;
+  image: ImageOptions;
 }
 
 export interface FileOutcome {
@@ -176,12 +195,41 @@ export interface Settings {
     keepStructure: boolean;
     onConflict: "skip" | "overwrite" | "rename";
     backgroundFillColor: string;
+    /** true = 剥离缩略图等冗余元数据（规范 11.1 默认值） */
     stripRedundantMetadata: boolean;
+    outputFormat: OutputFormat;
   };
-  processing: Record<string, unknown>;
+  processing: {
+    concurrency: number;
+    resample: Resample;
+    jpgQuality: number;
+    videoCrf: number;
+    videoEncoder: string;
+    hardwareAccel: boolean;
+    hdrTonemapToSdr: boolean;
+    gifColors: number;
+    gifDither: boolean;
+    upscaleWarnThreshold: number;
+    svgDpi: number;
+    svgSizeMode: SvgSizeMode;
+  };
   grouping: Grouping;
   recentFolders: string[];
 }
+
+export const RESAMPLE_LABEL: Record<Resample, string> = {
+  lanczos3: "Lanczos3（默认，平滑）",
+  bicubic: "Bicubic",
+  bilinear: "Bilinear",
+  nearest: "Nearest（像素风）",
+};
+
+export const FORMAT_LABEL: Record<OutputFormat, string> = {
+  keep: "保持原格式",
+  png: "统一转为 PNG",
+  jpeg: "统一转为 JPEG",
+  webp: "统一转为 WebP（无损）",
+};
 
 export const MODE_LABEL: Record<Mode, string> = {
   A: "A 等比缩放（居中）",

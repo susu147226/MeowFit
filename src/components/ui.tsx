@@ -1,18 +1,31 @@
 import type { ReactNode } from "react";
 
-/** 五个主分区共用的标题条（规范第七节）。 */
-export function RegionTitle({ children, right }: { children: string; right?: ReactNode }) {
+/** 五个主分区共用的面板外壳（规范第七节）。 */
+export function Panel({
+  title,
+  right,
+  children,
+  className = "",
+}: {
+  title: string;
+  right?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="flex shrink-0 items-center gap-2 border-b border-border bg-surface-2 px-3 py-1.5">
-      <h2 className="text-[12px] font-semibold tracking-wide text-muted">{children}</h2>
-      <span className="ml-auto flex items-center gap-2">{right}</span>
-    </div>
+    <section className={`flex min-h-0 flex-col overflow-hidden ${className}`}>
+      <div className="panel-head">
+        <h2 className="panel-title">{title}</h2>
+        <div className="ml-auto flex items-center gap-2">{right}</div>
+      </div>
+      {children}
+    </section>
   );
 }
 
 export function EmptyHint({ children }: { children: ReactNode }) {
   return (
-    <div className="flex h-full items-center justify-center px-6 text-center text-[12px] text-faint">
+    <div className="flex h-full flex-col items-center justify-center gap-1 px-8 text-center text-[12px] text-faint">
       {children}
     </div>
   );
@@ -26,32 +39,17 @@ export function Button({
   disabled,
   variant = "default",
   title,
-  type = "button",
 }: {
   children: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
   variant?: ButtonVariant;
   title?: string;
-  type?: "button" | "submit";
 }) {
-  const base =
-    "rounded px-2.5 py-1 text-[12px] transition disabled:cursor-not-allowed disabled:opacity-40";
-  const styles: Record<ButtonVariant, string> = {
-    default:
-      "border border-border bg-surface text-text hover:border-border-strong disabled:hover:border-border",
-    primary:
-      "border border-accent bg-accent text-accent-contrast hover:bg-accent-hover disabled:hover:bg-accent",
-    ghost: "text-muted hover:text-text",
-  };
+  const variantClass =
+    variant === "primary" ? "btn-primary" : variant === "ghost" ? "btn-ghost" : "";
   return (
-    <button
-      type={type}
-      title={title}
-      disabled={disabled}
-      onClick={onClick}
-      className={`${base} ${styles[variant]}`}
-    >
+    <button type="button" title={title} disabled={disabled} onClick={onClick} className={`btn ${variantClass}`}>
       {children}
     </button>
   );
@@ -70,7 +68,7 @@ export function Field({
     <label className="flex flex-col gap-1">
       <span className="text-[11px] text-muted">{label}</span>
       {children}
-      {hint && <span className="text-[11px] text-faint">{hint}</span>}
+      {hint && <span className="text-[11px] leading-relaxed text-faint">{hint}</span>}
     </label>
   );
 }
@@ -93,14 +91,68 @@ export function TextInput({
       value={value}
       placeholder={placeholder}
       onChange={(e) => onChange(e.target.value)}
-      className={`w-full rounded border bg-surface px-2 py-1 font-mono text-[12px] outline-none transition placeholder:font-sans placeholder:text-faint focus:border-accent ${
-        invalid ? "border-danger" : "border-border"
-      } ${className}`}
+      className={`input ${invalid ? "input-invalid" : ""} ${className}`}
     />
   );
 }
 
-export function Badge({
+export function Select<T extends string>({
+  value,
+  onChange,
+  options,
+  className = "",
+  title,
+}: {
+  value: T;
+  onChange: (value: T) => void;
+  options: { value: T; label: string }[];
+  className?: string;
+  title?: string;
+}) {
+  return (
+    <select
+      title={title}
+      value={value}
+      onChange={(e) => onChange(e.target.value as T)}
+      className={`select ${className}`}
+    >
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+export function Checkbox({
+  checked,
+  onChange,
+  children,
+  title,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  children: ReactNode;
+  title?: string;
+}) {
+  return (
+    <label
+      title={title}
+      className="flex cursor-pointer items-center gap-1.5 text-[12px] text-muted transition select-none hover:text-text"
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="accent-accent"
+      />
+      {children}
+    </label>
+  );
+}
+
+export function Tag({
   children,
   tone = "neutral",
 }: {
@@ -115,9 +167,5 @@ export function Badge({
     info: "bg-info-soft text-info",
     accent: "bg-accent-soft text-accent",
   };
-  return (
-    <span className={`rounded px-1.5 py-0.5 text-[11px] whitespace-nowrap ${tones[tone]}`}>
-      {children}
-    </span>
-  );
+  return <span className={`tag ${tones[tone]}`}>{children}</span>;
 }

@@ -4,8 +4,10 @@ pub mod config;
 pub mod error;
 pub mod exec;
 pub mod imaging;
+pub mod meta;
 pub mod model;
 pub mod scan;
+pub mod svg;
 
 use std::path::PathBuf;
 

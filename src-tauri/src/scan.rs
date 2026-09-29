@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
 use crate::model::MediaKind;
+use crate::svg;
 
 /// 静态位图：由 Rust `image` crate 处理
 const RASTER_EXTS: &[&str] = &[
@@ -90,6 +91,9 @@ pub struct ScannedFile {
     pub mtime_ms: i64,
     pub width: Option<u32>,
     pub height: Option<u32>,
+    /// 仅对 SVG 有意义：根元素是否声明了 width / height（规范 10.5）。
+    /// 未声明时界面须在「直接填像素」与「按 DPI 换算」之间提供切换。
+    pub svg_declared: bool,
     /// 已跳过的原因；`None` 表示该文件可参与处理
     pub skip_reason: Option<String>,
 }
@@ -148,54 +152,6 @@ fn to_relative(path: &Path, root: &Path) -> String {
         .unwrap_or(path)
         .to_string_lossy()
         .replace('\\', "/")
-}
-
-/// 读取 SVG 的基准尺寸。
-///
-/// 完整语义（未声明尺寸时按 DPI 换算等）见规范 10.5，属 P2 阶段；
-/// 此处只做最小解析，用于让素材列表能显示 SVG 尺寸。
-fn probe_svg(path: &Path) -> Option<(u32, u32)> {
-    let text = fs::read_to_string(path).ok()?;
-    let head = &text[..text.len().min(4096)];
-
-    let attr = |name: &str| -> Option<f64> {
-        let lower = head.to_ascii_lowercase();
-        let idx = lower.find(&format!("{name}="))?;
-        let rest = &head[idx + name.len() + 1..];
-        let quote = rest.chars().next()?;
-        if quote != '"' && quote != '\'' {
-            return None;
-        }
-        let end = rest[1..].find(quote)? + 1;
-        let raw = rest[1..end].trim();
-        let numeric: String = raw
-            .chars()
-            .take_while(|c| c.is_ascii_digit() || *c == '.')
-            .collect();
-        numeric.parse::<f64>().ok()
-    };
-
-    if let (Some(w), Some(h)) = (attr("width"), attr("height")) {
-        if w > 0.0 && h > 0.0 {
-            return Some((w.round() as u32, h.round() as u32));
-        }
-    }
-
-    // 回退到 viewBox 的第三、四个数值
-    let lower = head.to_ascii_lowercase();
-    let idx = lower.find("viewbox=")?;
-    let rest = &head[idx + "viewbox=".len()..];
-    let quote = rest.chars().next()?;
-    let end = rest[1..].find(quote)? + 1;
-    let nums: Vec<f64> = rest[1..end]
-        .split(|c: char| c == ',' || c.is_whitespace())
-        .filter(|s| !s.is_empty())
-        .filter_map(|s| s.parse::<f64>().ok())
-        .collect();
-    if nums.len() == 4 && nums[2] > 0.0 && nums[3] > 0.0 {
-        return Some((nums[2].round() as u32, nums[3].round() as u32));
-    }
-    None
 }
 
 /// 扫描文件夹（规范 5.5、6.1）。
@@ -294,7 +250,15 @@ pub fn scan_folder(root: &Path, options: &ScanOptions) -> Result<ScanResult, Str
             .to_ascii_lowercase();
         let kind = classify(&ext);
 
-        let (width, height, skip_reason) = probe(path, &ext, kind);
+        let (width, height, skip_reason, svg_declared) = {
+            let probed = probe(path, &ext, kind);
+            (
+                probed.width,
+                probed.height,
+                probed.skip_reason,
+                probed.svg_declared,
+            )
+        };
 
         files.push(ScannedFile {
             id: relative_path.clone(),
@@ -308,6 +272,7 @@ pub fn scan_folder(root: &Path, options: &ScanOptions) -> Result<ScanResult, Str
             mtime_ms,
             width,
             height,
+            svg_declared,
             skip_reason,
         });
     }
@@ -322,41 +287,56 @@ pub fn scan_folder(root: &Path, options: &ScanOptions) -> Result<ScanResult, Str
     })
 }
 
+/// 探测结果：尺寸、SVG 是否声明尺寸、以及「已跳过」原因。
+struct Probe {
+    width: Option<u32>,
+    height: Option<u32>,
+    svg_declared: bool,
+    skip_reason: Option<String>,
+}
+
 /// 探测尺寸并给出「已跳过」原因。
-fn probe(path: &Path, ext: &str, kind: Option<MediaKind>) -> (Option<u32>, Option<u32>, Option<String>) {
+fn probe(path: &Path, ext: &str, kind: Option<MediaKind>) -> Probe {
+    let skipped = |reason: String| Probe {
+        width: None,
+        height: None,
+        svg_declared: false,
+        skip_reason: Some(reason),
+    };
+
     match kind {
-        None => (
-            None,
-            None,
-            Some(format!("不支持的格式：.{ext}")),
-        ),
+        None => skipped(format!("不支持的格式：.{ext}")),
         Some(MediaKind::Raster) => {
             if FFMPEG_RASTER_EXTS.contains(&ext) {
-                return (
-                    None,
-                    None,
-                    Some(format!("该格式需由 FFmpeg 处理，将在后续阶段接入：.{ext}")),
-                );
+                return skipped(format!("该格式需由 FFmpeg 处理，将在后续阶段接入：.{ext}"));
             }
             match image::image_dimensions(path) {
-                Ok((w, h)) => (Some(w), Some(h), None),
-                Err(_) => (None, None, Some("无法解码该文件".into())),
+                Ok((mut w, mut h)) => {
+                    // 带 EXIF 方向的竖拍图：实际画面宽高与原始像素宽高相反（规范 6.8）
+                    if matches!(ext, "jpg" | "jpeg") && crate::imaging::swaps_axes(path) {
+                        std::mem::swap(&mut w, &mut h);
+                    }
+                    Probe {
+                        width: Some(w),
+                        height: Some(h),
+                        svg_declared: false,
+                        skip_reason: None,
+                    }
+                }
+                Err(_) => skipped("无法解码该文件".to_string()),
             }
         }
-        Some(MediaKind::Svg) => match probe_svg(path) {
-            Some((w, h)) => (Some(w), Some(h), None),
-            None => (None, None, Some("无法从 SVG 中解析出尺寸".into())),
+        Some(MediaKind::Svg) => match fs::read_to_string(path).ok().and_then(|text| svg::base_size(&text)) {
+            Some(size) => Probe {
+                width: Some(size.width.round() as u32),
+                height: Some(size.height.round() as u32),
+                svg_declared: size.declared,
+                skip_reason: None,
+            },
+            None => skipped("无法从 SVG 中解析出尺寸".to_string()),
         },
-        Some(MediaKind::Animated) => (
-            None,
-            None,
-            Some("动图处理将在后续阶段接入".into()),
-        ),
-        Some(MediaKind::Video) => (
-            None,
-            None,
-            Some("视频处理将在后续阶段接入".into()),
-        ),
+        Some(MediaKind::Animated) => skipped("动图处理将在后续阶段接入".to_string()),
+        Some(MediaKind::Video) => skipped("视频处理将在后续阶段接入".to_string()),
     }
 }
 

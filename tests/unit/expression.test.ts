@@ -7,6 +7,7 @@ import {
   parseNumberInput,
   parseScale,
 } from "../../src/lib/expression";
+import { dimsOf } from "../../src/lib/svgDims";
 
 describe("parseNumberInput（规范 6.3 的参数输入）", () => {
   it("接受纯数字与小数", () => {
@@ -89,5 +90,41 @@ describe("按比例自动计算（规范 6.3）", () => {
     expect(equivalentScale(reference, 960, null)).toBeCloseTo(0.5);
     expect(equivalentScale(reference, null, 540)).toBeCloseTo(0.5);
     expect(equivalentScale(reference, null, null)).toBeNull();
+  });
+});
+
+describe("SVG 基准尺寸（规范 10.5）", () => {
+  const svg = (declared: boolean) => ({
+    width: 100,
+    height: 50,
+    kind: "svg" as const,
+    svgDeclared: declared,
+  });
+  const withSvg = (mode: "pixel" | "dpi", dpi = 96) =>
+    ({ processing: { svgSizeMode: mode, svgDpi: dpi } }) as never;
+
+  it("已声明尺寸的 SVG 始终以声明值为基准，不受 DPI 选项影响", () => {
+    expect(dimsOf(svg(true), withSvg("pixel"))).toEqual({ width: 100, height: 50 });
+    expect(dimsOf(svg(true), withSvg("dpi", 192))).toEqual({ width: 100, height: 50 });
+  });
+
+  it("未声明尺寸时，pixel 模式以 viewBox 尺寸为基准", () => {
+    expect(dimsOf(svg(false), withSvg("pixel", 192))).toEqual({ width: 100, height: 50 });
+  });
+
+  it("未声明尺寸时，dpi 模式按 × dpi ÷ 96 换算基准", () => {
+    // 默认 96 DPI 即 1:1
+    expect(dimsOf(svg(false), withSvg("dpi", 96))).toEqual({ width: 100, height: 50 });
+    expect(dimsOf(svg(false), withSvg("dpi", 192))).toEqual({ width: 200, height: 100 });
+    expect(dimsOf(svg(false), withSvg("dpi", 48))).toEqual({ width: 50, height: 25 });
+  });
+
+  it("非 SVG 素材不受该选项影响", () => {
+    const png = { width: 640, height: 480, kind: "raster" as const, svgDeclared: false };
+    expect(dimsOf(png, withSvg("dpi", 288))).toEqual({ width: 640, height: 480 });
+  });
+
+  it("缺少设置时退回未换算的尺寸", () => {
+    expect(dimsOf(svg(false), null)).toEqual({ width: 100, height: 50 });
   });
 });

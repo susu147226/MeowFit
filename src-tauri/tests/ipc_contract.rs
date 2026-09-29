@@ -313,18 +313,111 @@ fn command_layer_refuses_invalid_plan() {
     let _ = fs::remove_dir_all(root.parent().unwrap());
 }
 
-/// ExecOptions 的界面形状必须被接受。
+/// ExecOptions 的界面形状必须被接受（含 P2 的图片处理参数）。
 #[test]
 fn exec_options_shape_matches_frontend() {
     let options: meowfit_lib::exec::ExecOptions = serde_json::from_value(json!({
         "outputDir": null,
         "keepStructure": true,
         "onConflict": "skip",
-        "backgroundFillColor": "#FFFFFF"
+        "image": {
+            "resample": "nearest",
+            "quality": 92,
+            "format": "webp",
+            "keepAllMetadata": true,
+            "backgroundFill": "#F0EAD8"
+        }
     }))
     .expect("ExecOptions 应接受界面发送的形状");
 
     assert!(options.output_dir.is_none());
     assert!(options.keep_structure);
     assert_eq!(options.on_conflict, "skip");
+    assert_eq!(options.image.resample, meowfit_lib::imaging::Resample::Nearest);
+    assert_eq!(options.image.quality, 92);
+    assert_eq!(options.image.format, meowfit_lib::imaging::OutputFormat::Webp);
+    assert!(options.image.keep_all_metadata);
+    assert_eq!(options.image.background_fill, "#F0EAD8");
+}
+
+/// Settings 的界面形状必须与 Rust 侧一致（含 P2 新增的两个字段）。
+#[test]
+fn settings_shape_matches_frontend() {
+    let settings: meowfit_lib::config::Settings = serde_json::from_value(json!({
+        "version": 1,
+        "language": "zh-CN",
+        "theme": { "mode": "dark", "backgroundImage": null, "backgroundOpacity": 80 },
+        "output": {
+            "directory": "./output",
+            "overwriteSource": false,
+            "keepStructure": true,
+            "onConflict": "rename",
+            "backgroundFillColor": "#FFFFFF",
+            "stripRedundantMetadata": true,
+            "outputFormat": "webp"
+        },
+        "processing": {
+            "concurrency": 4,
+            "resample": "bilinear",
+            "jpgQuality": 80,
+            "videoCrf": 23,
+            "videoEncoder": "h264",
+            "hardwareAccel": false,
+            "hdrTonemapToSdr": false,
+            "gifColors": 256,
+            "gifDither": false,
+            "upscaleWarnThreshold": 4,
+            "svgDpi": 192,
+            "svgSizeMode": "dpi"
+        },
+        "grouping": "folder",
+        "recentFolders": ["D:/a"]
+    }))
+    .expect("Settings 应接受界面发送的形状");
+
+    assert_eq!(settings.output.output_format, "webp");
+    assert_eq!(settings.processing.svg_size_mode, "dpi");
+    assert_eq!(settings.processing.svg_dpi, 192);
+    assert_eq!(settings.processing.resample, "bilinear");
+
+    // 回写界面时字段名保持 camelCase
+    let value = serde_json::to_value(&settings).unwrap();
+    assert_eq!(value["output"]["outputFormat"], json!("webp"));
+    assert_eq!(value["processing"]["svgSizeMode"], json!("dpi"));
+    assert_eq!(value["recentFolders"][0], json!("D:/a"));
+}
+
+/// 旧配置文件缺少 P2 新增字段时必须仍能加载（serde 默认值）。
+#[test]
+fn legacy_settings_without_p2_fields_still_loads() {
+    let settings: meowfit_lib::config::Settings = serde_json::from_value(json!({
+        "version": 1,
+        "language": "zh-CN",
+        "grouping": "prefix",
+        "output": {
+            "directory": "./output",
+            "overwriteSource": false,
+            "keepStructure": true,
+            "onConflict": "skip",
+            "backgroundFillColor": "#FFFFFF",
+            "stripRedundantMetadata": true
+        },
+        "processing": {
+            "concurrency": 8,
+            "resample": "lanczos3",
+            "jpgQuality": 85,
+            "videoCrf": 23,
+            "videoEncoder": "h264",
+            "hardwareAccel": false,
+            "hdrTonemapToSdr": false,
+            "gifColors": 256,
+            "gifDither": false,
+            "upscaleWarnThreshold": 4,
+            "svgDpi": 96
+        }
+    }))
+    .expect("缺少 P2 字段的旧配置应能加载");
+
+    assert_eq!(settings.output.output_format, "keep");
+    assert_eq!(settings.processing.svg_size_mode, "pixel");
 }

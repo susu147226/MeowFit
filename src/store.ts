@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 import { api } from "./api";
 import { linkDimension } from "./lib/expression";
+import { dimsOf } from "./lib/svgDims";
 import type {
   AppInfo,
   ExecReport,
@@ -89,6 +90,8 @@ interface MeowState {
   toggleSelect: (id: string, additive: boolean) => void;
   setLinkEnabled: (enabled: boolean) => void;
   setBasis: (basis: Basis) => void;
+  setProcessing: (patch: Partial<Settings["processing"]>) => void;
+  setOutput: (patch: Partial<Settings["output"]>) => void;
 
   setGlobalSetting: (setting: Setting | null) => void;
   setGroupTier: (group: string, tier: GroupTierState) => void;
@@ -110,11 +113,17 @@ type StateSlice = Pick<
   | "globalSetting"
   | "groupTiers"
   | "fileSettings"
+  | "settings"
 >;
 
 function nowTime(): string {
   return new Date().toLocaleTimeString("zh-CN", { hour12: false });
 }
+
+/**
+ * 参与计算的目标基准尺寸，实现在 `lib/svgDims.ts`（纯函数，便于单独测试）。
+ */
+export { dimsOf } from "./lib/svgDims";
 
 /** 可参与处理的素材：有尺寸、且扫描阶段未被标记跳过。 */
 export function processable(files: ScannedFile[]): ScannedFile[] {
@@ -138,7 +147,7 @@ function materialize(setting: Setting, reference: { width: number; height: numbe
 export function referenceFor(state: StateSlice, scope: Scope): { width: number; height: number } {
   if (scope.type === "file") {
     const file = state.files.find((f) => f.id === scope.id);
-    if (file?.width && file?.height) return { width: file.width, height: file.height };
+    if (file?.width && file?.height) return dimsOf(file, state.settings);
   }
 
   const groupFiles =
@@ -150,22 +159,19 @@ export function referenceFor(state: StateSlice, scope: Scope): { width: number; 
 
   if (state.basis === "selection") {
     const selected = pool.find((f) => state.selectedIds.includes(f.id));
-    if (selected?.width && selected?.height) {
-      return { width: selected.width, height: selected.height };
-    }
+    if (selected) return dimsOf(selected, state.settings);
   } else if (pool.length > 0) {
-    const areas = pool.map((f) => (f.width as number) * (f.height as number));
-    const target = state.basis === "groupMax" ? Math.max(...areas) : Math.min(...areas);
-    const picked = pool[areas.indexOf(target)];
-    if (picked?.width && picked?.height) {
-      return { width: picked.width, height: picked.height };
-    }
+    const sizes = pool.map((f) => {
+      const d = dimsOf(f, state.settings);
+      return d.width * d.height;
+    });
+    const target = state.basis === "groupMax" ? Math.max(...sizes) : Math.min(...sizes);
+    const picked = pool[sizes.indexOf(target)];
+    if (picked) return dimsOf(picked, state.settings);
   }
 
   const fallback = pool[0];
-  if (fallback?.width && fallback?.height) {
-    return { width: fallback.width, height: fallback.height };
-  }
+  if (fallback) return dimsOf(fallback, state.settings);
   return { width: 0, height: 0 };
 }
 
@@ -194,11 +200,12 @@ function buildRequest(state: StateSlice): { request: PlanRequest; sources: Sourc
         ? materialize(own, referenceFor(state, { type: "group", name: group }))
         : own
       : null;
+    const dims = dimsOf(f, state.settings);
     return {
       id: f.id,
       name: f.name,
-      width: f.width as number,
-      height: f.height as number,
+      width: dims.width,
+      height: dims.height,
       isVideo: f.kind === "video",
       group,
       setting,
@@ -476,6 +483,24 @@ export const useStore = create<MeowState>((set, get) => ({
     void get().refreshPlan();
   },
 
+  setProcessing: (patch) => {
+    const settings = get().settings;
+    if (!settings) return;
+    const next: Settings = { ...settings, processing: { ...settings.processing, ...patch } };
+    set({ settings: next });
+    api.saveSettings(next).catch((error) => get().log("ERROR", `保存设置失败：${String(error)}`));
+    void get().refreshPlan();
+  },
+
+  setOutput: (patch) => {
+    const settings = get().settings;
+    if (!settings) return;
+    const next: Settings = { ...settings, output: { ...settings.output, ...patch } };
+    set({ settings: next });
+    api.saveSettings(next).catch((error) => get().log("ERROR", `保存设置失败：${String(error)}`));
+    void get().refreshPlan();
+  },
+
   setGlobalSetting: (setting) => {
     set({ globalSetting: setting });
     void get().refreshPlan();
@@ -534,7 +559,13 @@ export const useStore = create<MeowState>((set, get) => ({
         outputDir: null,
         keepStructure: state.settings?.output.keepStructure ?? true,
         onConflict: state.settings?.output.onConflict ?? ("skip" as const),
-        backgroundFillColor: state.settings?.output.backgroundFillColor ?? "#FFFFFF",
+        image: {
+          resample: state.settings?.processing.resample ?? ("lanczos3" as const),
+          quality: state.settings?.processing.jpgQuality ?? 85,
+          format: state.settings?.output.outputFormat ?? ("keep" as const),
+          keepAllMetadata: !(state.settings?.output.stripRedundantMetadata ?? true),
+          backgroundFill: state.settings?.output.backgroundFillColor ?? "#FFFFFF",
+        },
       };
 
       get().log("INFO", `开始执行：共 ${request.files.length} 个素材`);

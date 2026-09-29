@@ -3,7 +3,8 @@ import { useEffect, useState } from "react";
 import { parseDimension, parseScale } from "../lib/expression";
 import { referenceFor, useStore } from "../store";
 import { ANCHOR_LABEL, MODES, MODE_LABEL, type Anchor, type Mode, type Setting } from "../types";
-import { Badge, Button, EmptyHint, Field, RegionTitle, TextInput } from "./ui";
+import ImageOptionsPanel from "./ImageOptionsPanel";
+import { Button, Checkbox, EmptyHint, Field, Panel, Select, Tag, TextInput } from "./ui";
 
 const ANCHORS: Anchor[] = [
   "topLeft",
@@ -17,7 +18,7 @@ const ANCHORS: Anchor[] = [
   "bottomRight",
 ];
 
-export default function SettingsPanel() {
+export default function SettingsPanel({ className = "" }: { className?: string }) {
   const scope = useStore((s) => s.scope);
   const groups = useStore((s) => s.groups);
   const files = useStore((s) => s.files);
@@ -35,10 +36,8 @@ export default function SettingsPanel() {
   const setBasis = useStore((s) => s.setBasis);
   const clearAllSettings = useStore((s) => s.clearAllSettings);
 
-  const state = useStore();
-  const reference = referenceFor(state, scope);
+  const reference = referenceFor(useStore(), scope);
 
-  // 当前作用域下已生效的具体设置（不含「未设置 / 跟随整体」两种三态）
   const tier = scope.type === "group" ? (groupTiers[scope.name] ?? null) : null;
   const scopeSetting: Setting | null =
     scope.type === "global"
@@ -54,7 +53,6 @@ export default function SettingsPanel() {
   const [widthText, setWidthText] = useState("");
   const [heightText, setHeightText] = useState("");
 
-  // 切换作用域或外部设置变化时，同步输入框显示
   useEffect(() => {
     setMode(scopeSetting?.mode ?? "A");
     setScaleText(scopeSetting?.scale !== undefined ? String(scopeSetting.scale) : "");
@@ -68,9 +66,7 @@ export default function SettingsPanel() {
     else setFileSetting(scope.id, next);
   };
 
-  const base = (): Setting => scopeSetting ?? { mode };
-
-  const commit = (patch: Partial<Setting>) => apply({ ...base(), ...patch });
+  const commit = (patch: Partial<Setting>) => apply({ ...(scopeSetting ?? { mode }), ...patch });
 
   const clearScope = () => {
     if (scope.type === "global") setGlobalSetting(null);
@@ -78,24 +74,25 @@ export default function SettingsPanel() {
     else setFileSetting(scope.id, null);
   };
 
-  const groupName = scope.type === "file" ? groups.find((g) => g.fileIds.includes(scope.id))?.name : undefined;
+  const groupName =
+    scope.type === "file" ? groups.find((g) => g.fileIds.includes(scope.id))?.name : undefined;
   const scopeLabel =
     scope.type === "global"
       ? "整体"
       : scope.type === "group"
-        ? `分组：${scope.name}`
-        : `单文件：${files.find((f) => f.id === scope.id)?.relativePath ?? scope.id}`;
+        ? `分组 ${scope.name}`
+        : (files.find((f) => f.id === scope.id)?.relativePath ?? scope.id);
 
-  // 当前参数相对基准尺寸的等效倍率，用于放大阈值警告
   const scaleResult = parseScale(scaleText);
   const widthResult = parseDimension(widthText);
   const heightResult = parseDimension(heightText);
+
   const effectiveScale = (() => {
-    if (!scopeSetting && !scaleText && !widthText && !heightText) return null;
     if (mode === "A" || mode === "G") return scaleResult.value;
     if (mode === "B" || mode === "C" || mode === "D") {
       if (widthResult.value !== null && reference.width > 0) return widthResult.value / reference.width;
-      if (heightResult.value !== null && reference.height > 0) return heightResult.value / reference.height;
+      if (heightResult.value !== null && reference.height > 0)
+        return heightResult.value / reference.height;
       return null;
     }
     if (mode === "E") {
@@ -111,63 +108,68 @@ export default function SettingsPanel() {
   const upscaleWarning =
     effectiveScale !== null && effectiveScale > warnThreshold ? effectiveScale : null;
 
-  const canEdit = scope.type === "global" || scope.type === "group" || scope.type === "file";
-
   if (files.length === 0) {
     return (
-      <div className="flex min-h-0 flex-col">
-        <RegionTitle>参数设置区</RegionTitle>
-        <EmptyHint>载入素材后在此设置缩放参数。</EmptyHint>
-      </div>
+      <Panel title="参数设置区" className={className}>
+        <div className="panel-body space-y-3">
+          <EmptyHint>
+            <span>载入素材后在此设置缩放参数</span>
+          </EmptyHint>
+          <ImageOptionsPanel />
+        </div>
+      </Panel>
     );
   }
 
   return (
-    <div className="flex min-h-0 flex-col border-b border-border">
-      <RegionTitle
-        right={
-          <Button variant="ghost" onClick={clearScope} disabled={!canEdit}>
-            清除本层设置
+    <Panel
+      title="参数设置区"
+      className={className}
+      right={
+        <>
+          <Button variant="ghost" onClick={clearScope}>
+            清除本层
           </Button>
-        }
-      >
-        参数设置区
-      </RegionTitle>
-
-      <div className="min-h-0 flex-1 space-y-2.5 overflow-auto px-3 py-2.5">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded bg-surface-3 px-2 py-0.5 text-[11px] text-muted">{scopeLabel}</span>
-          {scopeSetting && <Badge tone="accent">本层已设置</Badge>}
-          {scope.type === "file" && groupName && <Badge>属于分组「{groupName}」</Badge>}
           <Button variant="ghost" onClick={clearAllSettings}>
-            清空全部设置
+            全部清空
           </Button>
+        </>
+      }
+    >
+      <div className="panel-body space-y-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span
+            className="max-w-full truncate rounded-md bg-surface-3 px-2 py-0.5 text-[11px] text-muted"
+            title={scopeLabel}
+          >
+            {scopeLabel}
+          </span>
+          {scopeSetting && <Tag tone="accent">本层已设置</Tag>}
+          {groupName && <Tag>属于 {groupName}</Tag>}
         </div>
 
         {/* 三态：未设置 / 跟随整体 / 已设置（规范 6.4） */}
         {scope.type === "group" && (
-          <div className="flex items-center gap-1.5">
-            <span className="text-[11px] text-faint">本组状态</span>
-            <select
-              className="rounded border border-border bg-surface px-1.5 py-0.5 text-[11px]"
+          <Field label="本组状态">
+            <Select
               value={tier === null ? "unset" : tier.kind === "followGlobal" ? "follow" : "explicit"}
-              onChange={(e) => {
-                const value = e.target.value;
+              onChange={(value) => {
                 if (value === "unset") setGroupTier(scope.name, null);
                 else if (value === "follow") setGroupTier(scope.name, { kind: "followGlobal" });
-                else setGroupTier(scope.name, { kind: "explicit", setting: base() });
+                else setGroupTier(scope.name, { kind: "explicit", setting: { mode } });
               }}
-            >
-              <option value="unset">未设置（继承整体）</option>
-              <option value="follow">跟随整体（显式）</option>
-              <option value="explicit">已设置</option>
-            </select>
-          </div>
+              options={[
+                { value: "unset", label: "未设置（继承整体）" },
+                { value: "follow", label: "跟随整体（显式）" },
+                { value: "explicit", label: "已设置" },
+              ]}
+            />
+          </Field>
         )}
 
         {/* 缩放方式 A–G 单选 */}
         <div className="space-y-1">
-          <span className="text-[11px] text-faint">缩放方式</span>
+          <span className="text-[11px] text-muted">缩放方式</span>
           <div className="grid grid-cols-2 gap-1">
             {MODES.map((m) => (
               <button
@@ -176,9 +178,9 @@ export default function SettingsPanel() {
                 title={MODE_LABEL[m]}
                 onClick={() => {
                   setMode(m);
-                  apply({ ...base(), mode: m });
+                  apply({ ...(scopeSetting ?? { mode: m }), mode: m });
                 }}
-                className={`rounded border px-2 py-1 text-left text-[11px] transition ${
+                className={`truncate rounded-md border px-2 py-1.5 text-left text-[11px] transition ${
                   mode === m
                     ? "border-accent bg-accent-soft text-accent"
                     : "border-border text-muted hover:border-border-strong hover:text-text"
@@ -188,10 +190,8 @@ export default function SettingsPanel() {
               </button>
             ))}
           </div>
-          <p className="text-[11px] text-faint">F「仅放大 / 仅缩小」是下方的附加开关，不是独立方式。</p>
         </div>
 
-        {/* 参数输入 */}
         {(mode === "A" || mode === "G") && (
           <Field
             label="缩放倍率"
@@ -201,7 +201,7 @@ export default function SettingsPanel() {
                   基准 {reference.width}×{reference.height}
                   {scaleResult.value !== null && (
                     <>
-                      {" → 等效宽高 "}
+                      {" → "}
                       <span className="font-mono text-muted">
                         {Math.round(reference.width * scaleResult.value)}×
                         {Math.round(reference.height * scaleResult.value)}
@@ -209,9 +209,7 @@ export default function SettingsPanel() {
                     </>
                   )}
                 </>
-              ) : (
-                "尚无可用的基准素材"
-              )
+              ) : null
             }
           >
             <TextInput
@@ -228,7 +226,7 @@ export default function SettingsPanel() {
         )}
 
         {mode === "E" && (
-          <Field label="长边上限（仅超过时等比缩小）" hint="未超过上限的素材保持原样">
+          <Field label="长边上限" hint="未超过上限的素材保持原样">
             <TextInput
               value={scaleText}
               placeholder="1280"
@@ -242,7 +240,7 @@ export default function SettingsPanel() {
         )}
 
         {(mode === "B" || mode === "C" || mode === "D") && (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2">
               <Field label="目标宽">
                 <TextInput
@@ -270,118 +268,72 @@ export default function SettingsPanel() {
               </Field>
             </div>
 
-            <label className="flex items-center gap-1.5 text-[12px] text-muted">
-              <input
-                type="checkbox"
-                checked={linkEnabled}
-                onChange={(e) => setLinkEnabled(e.target.checked)}
-              />
+            <Checkbox checked={linkEnabled} onChange={setLinkEnabled}>
               按比例自动计算
-            </label>
+            </Checkbox>
 
-            {linkEnabled ? (
-              <p className="text-[11px] text-faint">
-                只填一边即可，另一边按基准尺寸的宽高比自动算出
-                {reference.width > 0 && (
-                  <>
-                    {"（基准 "}
-                    {reference.width}×{reference.height}
-                    {"）"}
-                  </>
-                )}
-              </p>
-            ) : (
-              <p className="text-[11px] text-warn">
-                已关闭联动：宽高各自独立，只填一边将报错并要求补全（缺少哪一边会明确指出）。
-              </p>
+            {!linkEnabled && (
+              <p className="text-[11px] text-warn">宽高各自独立，只填一边将报错并要求补全</p>
             )}
 
             <div className="flex items-center gap-2">
-              <span className="text-[11px] text-faint">基准</span>
-              <select
-                className="rounded border border-border bg-surface px-1.5 py-0.5 text-[11px]"
+              <span className="shrink-0 text-[11px] text-faint">基准</span>
+              <Select
                 value={basis}
-                onChange={(e) => setBasis(e.target.value as typeof basis)}
-              >
-                <option value="selection">当前选中素材尺寸</option>
-                <option value="groupMax">分组内最大尺寸</option>
-                <option value="groupMin">分组内最小尺寸</option>
-              </select>
+                onChange={setBasis}
+                options={[
+                  { value: "selection", label: "当前选中素材尺寸" },
+                  { value: "groupMax", label: "分组内最大尺寸" },
+                  { value: "groupMin", label: "分组内最小尺寸" },
+                ]}
+              />
               {widthResult.value !== null && reference.width > 0 && (
-                <span className="text-[11px] text-faint">
-                  等效倍率{" "}
-                  <span className="font-mono text-muted">
+                <span className="shrink-0 text-[11px] text-faint">
+                  等效 <span className="font-mono text-muted">
                     {(widthResult.value / reference.width).toFixed(3)}
-                  </span>
+                  </span>{" "}
+                  倍
                 </span>
               )}
             </div>
 
             {mode === "B" && (
-              <label className="flex items-center gap-1.5 text-[12px] text-muted">
-                <input
-                  type="checkbox"
-                  checked={scopeSetting?.noPad ?? false}
-                  onChange={(e) => commit({ noPad: e.target.checked })}
-                />
-                不补边（输出内容实际尺寸，不输出目标框画布）
-              </label>
+              <Checkbox checked={scopeSetting?.noPad ?? false} onChange={(v) => commit({ noPad: v })}>
+                不补边（输出内容实际尺寸）
+              </Checkbox>
             )}
           </div>
         )}
 
         {mode === "G" && (
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-faint">锚点</span>
-            <select
-              className="rounded border border-border bg-surface px-1.5 py-0.5 text-[11px]"
+          <Field label="锚点">
+            <Select
               value={scopeSetting?.anchor ?? "center"}
-              onChange={(e) => commit({ anchor: e.target.value as Anchor })}
-            >
-              {ANCHORS.map((a) => (
-                <option key={a} value={a}>
-                  {ANCHOR_LABEL[a]}
-                </option>
-              ))}
-            </select>
-          </div>
+              onChange={(value) => commit({ anchor: value as Anchor })}
+              options={ANCHORS.map((a) => ({ value: a, label: ANCHOR_LABEL[a] }))}
+            />
+          </Field>
         )}
 
-        {/* F 附加开关 */}
-        <div className="flex items-center gap-4 border-t border-border pt-2">
-          <span className="text-[11px] text-faint">F 附加</span>
-          <label className="flex items-center gap-1.5 text-[12px] text-muted">
-            <input
-              type="checkbox"
-              checked={scopeSetting?.onlyUp ?? false}
-              onChange={(e) => commit({ onlyUp: e.target.checked })}
-            />
+        <div className="flex items-center gap-4 border-t border-border pt-3">
+          <span className="text-[11px] text-faint">附加</span>
+          <Checkbox checked={scopeSetting?.onlyUp ?? false} onChange={(v) => commit({ onlyUp: v })}>
             仅放大
-          </label>
-          <label className="flex items-center gap-1.5 text-[12px] text-muted">
-            <input
-              type="checkbox"
-              checked={scopeSetting?.onlyDown ?? false}
-              onChange={(e) => commit({ onlyDown: e.target.checked })}
-            />
+          </Checkbox>
+          <Checkbox checked={scopeSetting?.onlyDown ?? false} onChange={(v) => commit({ onlyDown: v })}>
             仅缩小
-          </label>
+          </Checkbox>
         </div>
 
         {upscaleWarning !== null && (
-          <div className="rounded border border-warn/40 bg-warn-soft px-2 py-1.5 text-[11px] text-warn">
-            放大倍率约 <span className="font-mono">{upscaleWarning.toFixed(2)}</span> 倍，已超过
-            {warnThreshold} 倍阈值：放大不会增加画面细节，原作分辨率不足时结果会变模糊或出现锯齿。
-            <span className="text-faint">（仅提示，不阻止执行）</span>
+          <div className="rounded-md border border-warn/40 bg-warn-soft px-2.5 py-2 text-[11px] leading-relaxed text-warn">
+            放大 <span className="font-mono">{upscaleWarning.toFixed(2)}</span> 倍，已超过
+            {warnThreshold} 倍阈值：放大不会增加画面细节，原素材分辨率不足时结果会模糊或出现锯齿。
           </div>
         )}
 
-        {/* 规范 6.2 要求界面说明放大行为 */}
-        <p className="border-t border-border pt-2 text-[11px] leading-relaxed text-faint">
-          放大不会增加画面细节。原素材分辨率不足时，放大结果会出现模糊、锯齿或马赛克。
-          像素风素材应选 Nearest，普通素材应选 Lanczos3。（重采样算法选择与更细的画质控制在 P2 阶段接入。）
-        </p>
+        <ImageOptionsPanel />
       </div>
-    </div>
+    </Panel>
   );
 }

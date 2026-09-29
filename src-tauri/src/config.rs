@@ -115,7 +115,15 @@ pub struct OutputConfig {
     pub keep_structure: bool,
     pub on_conflict: String,
     pub background_fill_color: String,
+    /// `true` = 剥离缩略图等冗余元数据（规范 11.1 的默认值）
     pub strip_redundant_metadata: bool,
+    /// 输出格式：keep | png | jpeg | webp（规范 6.8 的格式转换）
+    #[serde(default = "default_output_format")]
+    pub output_format: String,
+}
+
+fn default_output_format() -> String {
+    "keep".into()
 }
 
 impl Default for OutputConfig {
@@ -127,6 +135,7 @@ impl Default for OutputConfig {
             on_conflict: "skip".into(),
             background_fill_color: "#FFFFFF".into(),
             strip_redundant_metadata: true,
+            output_format: default_output_format(),
         }
     }
 }
@@ -145,6 +154,13 @@ pub struct ProcessingConfig {
     pub gif_dither: bool,
     pub upscale_warn_threshold: f64,
     pub svg_dpi: u32,
+    /// 未声明尺寸的 SVG 如何取得基准：pixel（直接填像素）| dpi（按 DPI 换算，规范 10.5）
+    #[serde(default = "default_svg_size_mode")]
+    pub svg_size_mode: String,
+}
+
+fn default_svg_size_mode() -> String {
+    "pixel".into()
 }
 
 impl Default for ProcessingConfig {
@@ -161,6 +177,7 @@ impl Default for ProcessingConfig {
             gif_dither: false,
             upscale_warn_threshold: 4.0,
             svg_dpi: 96,
+            svg_size_mode: default_svg_size_mode(),
         }
     }
 }

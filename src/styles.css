@@ -107,3 +107,97 @@ body {
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
 }
+
+/* ============================================================
+   共用组件样式：把重复的工具类收拢，保证各区视觉一致
+   ============================================================ */
+
+@layer components {
+  /* 面板头：五个主分区共用 */
+  .panel-head {
+    @apply flex shrink-0 items-center gap-2 border-b border-border bg-surface-2 px-3.5 py-2;
+  }
+
+  .panel-title {
+    @apply text-[12px] font-semibold tracking-wide text-muted;
+  }
+
+  .panel-body {
+    @apply min-h-0 flex-1 overflow-auto px-3.5 py-3;
+  }
+
+  .btn {
+    @apply inline-flex shrink-0 cursor-pointer items-center justify-center gap-1 rounded-md border border-border
+      bg-surface px-2.5 py-1 text-[12px] leading-5 text-text transition
+      hover:border-border-strong hover:bg-surface-2
+      disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-border disabled:hover:bg-surface;
+  }
+
+  .btn-primary {
+    @apply border-accent bg-accent text-accent-contrast
+      hover:border-accent-hover hover:bg-accent-hover
+      disabled:hover:border-accent disabled:hover:bg-accent;
+  }
+
+  .btn-ghost {
+    @apply border-transparent bg-transparent text-muted hover:border-transparent hover:bg-surface-3 hover:text-text;
+  }
+
+  .input {
+    @apply w-full rounded-md border border-border bg-surface px-2 py-1 font-mono text-[12px]
+      text-text outline-none transition placeholder:font-sans placeholder:text-faint focus:border-accent;
+  }
+
+  .input-invalid {
+    @apply border-danger focus:border-danger;
+  }
+
+  .select {
+    @apply max-w-full cursor-pointer rounded-md border border-border bg-surface px-1.5 py-1
+      text-[12px] text-text outline-none transition hover:border-border-strong focus:border-accent;
+  }
+
+  /* 表格：素材列表与预览共用 */
+  .grid-table {
+    @apply w-full border-collapse text-[12px];
+  }
+
+  .grid-table thead th {
+    @apply sticky top-0 z-10 bg-surface-2 px-3 py-1.5 text-left text-[11px] font-normal text-faint;
+  }
+
+  .grid-table tbody tr {
+    @apply border-b border-border/60 transition;
+  }
+
+  .grid-table tbody td {
+    @apply px-3 py-1.5 align-middle;
+  }
+
+  .row-idle {
+    @apply hover:bg-surface-2;
+  }
+
+  .row-active {
+    @apply bg-accent-soft;
+  }
+
+  .row-selected {
+    @apply bg-surface-3;
+  }
+
+  /* 状态/标记标签 */
+  .tag {
+    @apply inline-flex items-center rounded px-1.5 py-0.5 text-[11px] whitespace-nowrap;
+  }
+
+  /* 折叠区（已跳过、未改动、结果明细） */
+  .fold {
+    @apply border-t border-border px-3.5 py-2;
+  }
+
+  .fold > summary {
+    @apply cursor-pointer text-[12px] text-muted transition select-none hover:text-text;
+  }
+}
+

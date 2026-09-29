@@ -34,8 +34,9 @@ pub struct ExecOptions {
     /// skip | overwrite | rename
     #[serde(default = "default_conflict")]
     pub on_conflict: String,
-    #[serde(default = "default_fill")]
-    pub background_fill_color: String,
+    /// 图片处理参数：重采样、质量、输出格式、元数据开关、背景色
+    #[serde(default)]
+    pub image: imaging::ImageOptions,
 }
 
 fn default_true() -> bool {
@@ -44,9 +45,6 @@ fn default_true() -> bool {
 fn default_conflict() -> String {
     "skip".into()
 }
-fn default_fill() -> String {
-    "#FFFFFF".into()
-}
 
 impl Default for ExecOptions {
     fn default() -> Self {
@@ -54,7 +52,7 @@ impl Default for ExecOptions {
             output_dir: None,
             keep_structure: true,
             on_conflict: default_conflict(),
-            background_fill_color: default_fill(),
+            image: imaging::ImageOptions::default(),
         }
     }
 }
@@ -159,10 +157,15 @@ fn resolve_conflict(path: PathBuf, on_conflict: &str) -> Option<PathBuf> {
     }
 }
 
-fn output_path_for(output_root: &Path, source_id: &str, keep_structure: bool) -> PathBuf {
+fn output_path_for(
+    output_root: &Path,
+    source_id: &str,
+    keep_structure: bool,
+    new_ext: &str,
+) -> PathBuf {
     let relative = source_id.replace('\\', "/");
     let relative = relative.trim_start_matches('/');
-    if keep_structure {
+    let mut path = if keep_structure {
         let mut path = output_root.to_path_buf();
         for segment in relative.split('/').filter(|s| !s.is_empty() && *s != "..") {
             path.push(segment);
@@ -171,7 +174,13 @@ fn output_path_for(output_root: &Path, source_id: &str, keep_structure: bool) ->
     } else {
         let name = relative.rsplit('/').next().unwrap_or(relative);
         output_root.join(name)
+    };
+
+    // 统一转换格式时扩展名随目标格式变化（规范 6.5 的例外条款）
+    if !new_ext.is_empty() {
+        path.set_extension(new_ext);
     }
+    path
 }
 
 /// 执行计划（规范 6.7 的单文件粒度部分）。
@@ -255,7 +264,13 @@ pub fn execute(
             continue;
         }
 
-        let wanted = output_path_for(&output_root, &entry.id, opts.keep_structure);
+        let src_ext = Path::new(&source.path)
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let out_ext = imaging::resolve_output_ext(&src_ext, opts.image.format);
+        let wanted = output_path_for(&output_root, &entry.id, opts.keep_structure, &out_ext);
 
         // 绝不覆盖源文件（规范第八节）
         if wanted == PathBuf::from(&source.path) {
@@ -285,12 +300,12 @@ pub fn execute(
             }
         };
 
-        match imaging::render_and_write(
+        match imaging::write_image(
             Path::new(&source.path),
             &final_path,
             &target,
             mode,
-            &opts.background_fill_color,
+            &opts.image,
         ) {
             Ok(new_size) => outcomes.push(FileOutcome {
                 id: entry.id.clone(),

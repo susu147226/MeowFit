@@ -3,7 +3,9 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 
 import { pickFolder } from "../api";
 import { useStore } from "../store";
-import { Button, TextInput } from "./ui";
+import { Button, Checkbox, Select, TextInput } from "./ui";
+
+const EMPTY_FOLDERS: readonly string[] = [];
 
 export default function ScanBar() {
   const root = useStore((s) => s.root);
@@ -11,7 +13,8 @@ export default function ScanBar() {
   const scanOptions = useStore((s) => s.scanOptions);
   const setScanOptions = useStore((s) => s.setScanOptions);
   const scanFolder = useStore((s) => s.scanFolder);
-  const settings = useStore((s) => s.settings);
+  // 选择器必须返回稳定引用：每次新建 [] 会让 zustand 判定状态变化并陷入无限重渲染
+  const recentFolders = useStore((s) => s.settings?.recentFolders ?? EMPTY_FOLDERS);
   const log = useStore((s) => s.log);
 
   const [dragging, setDragging] = useState(false);
@@ -30,7 +33,7 @@ export default function ScanBar() {
       if (/\.[^\\/]+$/.test(first)) {
         // 拖入多个文件时，以其所在文件夹为输入根目录
         const parent = first.replace(/[\\/][^\\/]*$/, "");
-        log("INFO", `拖入 ${paths.length} 个文件，将以所在文件夹为输入：${parent}`);
+        log("INFO", `拖入 ${paths.length} 个文件，以所在文件夹为输入：${parent}`);
         await scanFolder(parent);
       } else {
         await scanFolder(first);
@@ -53,11 +56,9 @@ export default function ScanBar() {
           if (cancelled) fn();
           else unlisten = fn;
         })
-        .catch(() => {
-          log("WARN", "当前环境不支持拖拽载入，请改用「选择文件夹」按钮或粘贴路径");
-        });
+        .catch(() => log("WARN", "当前环境不支持拖拽载入"));
     } catch {
-      log("WARN", "当前环境不支持拖拽载入，请改用「选择文件夹」按钮或粘贴路径");
+      log("WARN", "当前环境不支持拖拽载入");
     }
 
     return () => {
@@ -73,20 +74,19 @@ export default function ScanBar() {
       .filter(Boolean);
 
   const applyOptions = () => {
-    setScanOptions({
-      include: parseList(includeText),
-      exclude: parseList(excludeText),
-    });
-    if (root) void scanFolder(root, { include: parseList(includeText), exclude: parseList(excludeText) });
+    const include = parseList(includeText);
+    const exclude = parseList(excludeText);
+    setScanOptions({ include, exclude });
+    if (root) void scanFolder(root, { include, exclude });
   };
 
   return (
     <section
-      className={`shrink-0 border-b bg-surface px-4 py-2 transition ${
+      className={`shrink-0 border-b bg-surface px-4 py-2.5 transition ${
         dragging ? "border-accent bg-accent-soft" : "border-border"
       }`}
     >
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-2">
         <Button
           variant="primary"
           disabled={scanning}
@@ -100,78 +100,66 @@ export default function ScanBar() {
         </Button>
 
         <TextInput
-          className="max-w-[280px]"
+          className="max-w-[260px]"
           value={pathInput}
           onChange={setPathInput}
-          placeholder="粘贴路径后回车"
+          placeholder="或粘贴路径后回车"
         />
-        <Button
-          disabled={!pathInput.trim() || scanning}
-          onClick={() => void scanFolder(pathInput.trim())}
-        >
+        <Button disabled={!pathInput.trim() || scanning} onClick={() => void scanFolder(pathInput.trim())}>
           打开
         </Button>
 
-        {settings && settings.recentFolders.length > 0 && (
-          <select
-            className="max-w-[260px] rounded border border-border bg-surface px-2 py-1 text-[12px] outline-none focus:border-accent"
+        {recentFolders.length > 0 && (
+          <Select
+            className="max-w-[240px]"
+            title="最近使用的文件夹"
             value=""
-            onChange={(e) => {
-              if (e.target.value) void scanFolder(e.target.value);
+            onChange={(folder) => {
+              if (folder) void scanFolder(folder);
+            }}
+            options={[
+              { value: "", label: `最近使用（${recentFolders.length}）` },
+              ...recentFolders.map((folder) => ({ value: folder, label: folder })),
+            ]}
+          />
+        )}
+
+        <span className="ml-auto flex items-center gap-3">
+          <Checkbox
+            checked={scanOptions.recursive}
+            onChange={(checked) => {
+              setScanOptions({ recursive: checked });
+              if (root) void scanFolder(root, { recursive: checked });
             }}
           >
-            <option value="">最近使用的文件夹（{settings.recentFolders.length}）</option>
-            {settings.recentFolders.map((folder) => (
-              <option key={folder} value={folder}>
-                {folder}
-              </option>
-            ))}
-          </select>
-        )}
-
-        <label className="ml-auto flex items-center gap-1.5 text-[12px] text-muted">
-          <input
-            type="checkbox"
-            checked={scanOptions.recursive}
-            onChange={(e) => {
-              setScanOptions({ recursive: e.target.checked });
-              if (root) void scanFolder(root, { recursive: e.target.checked });
-            }}
-          />
-          递归子文件夹
-        </label>
-        {!scanOptions.recursive && <span className="text-[11px] text-faint">（仅当前层）</span>}
+            递归子文件夹
+          </Checkbox>
+        </span>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-muted">
-        <span className="text-[11px] text-faint">包含</span>
+      <div className="mt-2 flex items-center gap-2">
+        <span className="shrink-0 text-[11px] text-faint">包含</span>
         <TextInput
-          className="max-w-[200px]"
+          className="max-w-[180px]"
           value={includeText}
           onChange={setIncludeText}
-          placeholder="如 icon_*,logo*"
+          placeholder="icon_*,logo*"
         />
-        <span className="text-[11px] text-faint">排除</span>
+        <span className="shrink-0 text-[11px] text-faint">排除</span>
         <TextInput
-          className="max-w-[200px]"
+          className="max-w-[180px]"
           value={excludeText}
           onChange={setExcludeText}
-          placeholder="如 *_thumb.*,@2x"
+          placeholder="*_thumb.*,@2x"
         />
         <Button onClick={applyOptions} disabled={!root}>
-          应用并重新扫描
+          应用
         </Button>
 
-        {root && (
-          <span className="ml-auto max-w-[420px] truncate font-mono text-[11px] text-faint" title={root}>
-            输入：{root}
-          </span>
-        )}
+        <span className="ml-auto min-w-0 truncate font-mono text-[11px] text-faint" title={root ?? ""}>
+          {dragging ? "松开即可载入此文件夹" : (root ?? "尚未选择素材文件夹")}
+        </span>
       </div>
-
-      {dragging && (
-        <p className="mt-1.5 text-[12px] text-accent">松开即可载入此文件夹</p>
-      )}
     </section>
   );
 }

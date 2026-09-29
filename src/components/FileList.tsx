@@ -10,7 +10,7 @@ import {
   type MediaKind,
   type PlanEntry,
 } from "../types";
-import { Badge, Button, EmptyHint, RegionTitle } from "./ui";
+import { EmptyHint, Panel, Select, Tag } from "./ui";
 
 const KIND_LABEL: Record<MediaKind, string> = {
   raster: "静态图片",
@@ -21,7 +21,7 @@ const KIND_LABEL: Record<MediaKind, string> = {
 
 const GROUPINGS: Grouping[] = ["prefix", "extension", "folder"];
 
-export default function FileList() {
+export default function FileList({ className = "" }: { className?: string }) {
   const files = useStore((s) => s.files);
   const groups = useStore((s) => s.groups);
   const grouping = useStore((s) => s.grouping);
@@ -67,21 +67,37 @@ export default function FileList() {
     };
   }, [files]);
 
+  const viewToggle = (
+    <div className="flex overflow-hidden rounded-md border border-border">
+      {(["groups", "files"] as const).map((mode) => (
+        <button
+          key={mode}
+          type="button"
+          onClick={() => setView(mode)}
+          className={`px-2.5 py-1 text-[11px] transition ${
+            view === mode
+              ? "bg-accent text-accent-contrast"
+              : "bg-surface text-muted hover:bg-surface-3 hover:text-text"
+          }`}
+        >
+          {mode === "groups" ? "按分组" : "按文件"}
+        </button>
+      ))}
+    </div>
+  );
+
   if (files.length === 0) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col">
-        <RegionTitle>素材列表区</RegionTitle>
+      <Panel title="素材列表区" className={className}>
         <EmptyHint>
-          选择、拖入或粘贴一个文件夹路径以开始。
-          <br />
-          扫描是只读的，在你确认执行前不会改动任何文件。
+          <span>选择或拖入一个文件夹以开始扫描</span>
         </EmptyHint>
-      </div>
+      </Panel>
     );
   }
 
-  const renderEntry = (entry: PlanEntry | undefined, fallbackId: string) => {
-    const outcome = outcomeById.get(fallbackId);
+  const renderStatus = (entry: PlanEntry | undefined, id: string) => {
+    const outcome = outcomeById.get(id);
     if (outcome) {
       const tone =
         outcome.status === "success"
@@ -100,10 +116,10 @@ export default function FileList() {
               ? "已跳过"
               : "未改动";
       return (
-        <span className="flex items-center gap-1">
-          <Badge tone={tone}>{label}</Badge>
+        <span className="flex items-center gap-1.5">
+          <Tag tone={tone}>{label}</Tag>
           {outcome.reason && (
-            <span className="max-w-[160px] truncate text-[11px] text-faint" title={outcome.reason}>
+            <span className="max-w-[180px] truncate text-[11px] text-faint" title={outcome.reason}>
               {outcome.reason}
             </span>
           )}
@@ -111,58 +127,36 @@ export default function FileList() {
       );
     }
     if (!entry) return <span className="text-[11px] text-faint">—</span>;
-    if (entry.error) {
-      return <Badge tone="danger">{entry.error.message}</Badge>;
-    }
-    if (entry.action === "unchanged") {
-      return <Badge tone="neutral">未改动</Badge>;
-    }
+    if (entry.error) return <Tag tone="danger">{entry.error.message}</Tag>;
+    if (entry.action === "unchanged") return <Tag>未改动</Tag>;
     return (
-      <Badge tone="accent">
+      <Tag tone="accent">
         {entry.target ? `${entry.target.width}×${entry.target.height}` : "待缩放"}
-      </Badge>
+      </Tag>
     );
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <RegionTitle
-        right={
-          <>
-            <span className="text-[11px] text-faint">
-              共 {stats.total} 个 · 可处理 {stats.processable} · 已跳过 {stats.skipped}
-            </span>
-            <span className="flex overflow-hidden rounded border border-border">
-              <button
-                type="button"
-                onClick={() => setView("groups")}
-                className={`px-2 py-0.5 text-[11px] ${view === "groups" ? "bg-accent text-accent-contrast" : "text-muted hover:text-text"}`}
-              >
-                按分组
-              </button>
-              <button
-                type="button"
-                onClick={() => setView("files")}
-                className={`px-2 py-0.5 text-[11px] ${view === "files" ? "bg-accent text-accent-contrast" : "text-muted hover:text-text"}`}
-              >
-                按文件
-              </button>
-            </span>
-          </>
-        }
-      >
-        素材列表区
-      </RegionTitle>
-
+    <Panel
+      title="素材列表区"
+      className={className}
+      right={
+        <>
+          <span className="text-[11px] text-faint">
+            {stats.total} 个 · 可处理 {stats.processable} · 跳过 {stats.skipped}
+          </span>
+          {viewToggle}
+        </>
+      }
+    >
       {/* 分组方式：三种单选，不允许叠加（规范 6.4） */}
-      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border bg-surface px-3 py-1.5">
-        <span className="text-[11px] text-faint">分组方式</span>
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border bg-surface px-3.5 py-2">
         {GROUPINGS.map((option) => (
           <button
             key={option}
             type="button"
             onClick={() => requestGrouping(option)}
-            className={`rounded border px-2 py-0.5 text-[11px] transition ${
+            className={`rounded-md border px-2 py-0.5 text-[11px] transition ${
               grouping === option
                 ? "border-accent bg-accent-soft text-accent"
                 : "border-border text-muted hover:border-border-strong hover:text-text"
@@ -173,26 +167,26 @@ export default function FileList() {
         ))}
         <span className="ml-auto flex flex-wrap gap-1">
           {stats.byKind.map(([kind, count]) => (
-            <Badge key={kind}>
+            <Tag key={kind}>
               {kind} {count}
-            </Badge>
+            </Tag>
           ))}
         </span>
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto">
         {view === "files" ? (
-          <table className="w-full border-collapse text-[12px]">
-            <thead className="sticky top-0 bg-surface-2 text-[11px] text-faint">
+          <table className="grid-table">
+            <thead>
               <tr>
-                <th className="px-2 py-1 text-left font-normal">文件</th>
-                <th className="px-2 py-1 text-left font-normal">类型</th>
-                <th className="px-2 py-1 text-left font-normal">原尺寸</th>
-                <th className="px-2 py-1 text-left font-normal">分组</th>
-                <th className="px-2 py-1 text-left font-normal">生效来源</th>
-                <th className="px-2 py-1 text-left font-normal">方式</th>
-                <th className="px-2 py-1 text-left font-normal">状态 / 目标</th>
-                <th className="px-2 py-1 text-left font-normal">移动到</th>
+                <th>文件</th>
+                <th>类型</th>
+                <th>原尺寸</th>
+                <th>分组</th>
+                <th>来源</th>
+                <th>方式</th>
+                <th>状态 / 目标</th>
+                <th>移动到</th>
               </tr>
             </thead>
             <tbody>
@@ -208,45 +202,38 @@ export default function FileList() {
                       setScope({ type: "file", id: file.id });
                       toggleSelect(file.id, false);
                     }}
-                    className={`cursor-pointer border-b border-border/60 ${
-                      active ? "bg-accent-soft" : selected ? "bg-surface-3" : "hover:bg-surface-2"
+                    className={`cursor-pointer ${
+                      active ? "row-active" : selected ? "row-selected" : "row-idle"
                     }`}
                   >
-                    <td className="max-w-[260px] truncate px-2 py-1 font-mono text-[11px]" title={file.relativePath}>
+                    <td className="max-w-[280px] truncate font-mono text-[11px]" title={file.relativePath}>
                       {file.relativePath}
                     </td>
-                    <td className="px-2 py-1 text-muted">
-                      {file.kind ? KIND_LABEL[file.kind] : <Badge tone="warn">不支持</Badge>}
+                    <td className="text-muted">
+                      {file.kind ? KIND_LABEL[file.kind] : <Tag tone="warn">不支持</Tag>}
                     </td>
-                    <td className="px-2 py-1 font-mono text-[11px] text-muted">
+                    <td className="font-mono text-[11px] text-muted">
                       {file.width && file.height ? `${file.width}×${file.height}` : "—"}
                     </td>
-                    <td className="px-2 py-1 text-muted">{groupName || "—"}</td>
-                    <td className="px-2 py-1 text-muted">
-                      {entry ? SOURCE_LABEL[entry.source] : "—"}
-                    </td>
-                    <td className="px-2 py-1 text-muted">
-                      {entry?.mode ? MODE_SHORT[entry.mode] : "不变"}
-                    </td>
-                    <td className="px-2 py-1">{renderEntry(entry, file.id)}</td>
-                    <td className="px-2 py-1">
-                      <select
-                        className="max-w-[120px] rounded border border-border bg-surface px-1 py-0.5 text-[11px]"
-                        value=""
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => {
-                          if (e.target.value) moveFile(file.id, e.target.value);
-                        }}
-                      >
-                        <option value="">移至…</option>
-                        {groups
-                          .filter((g) => g.name !== groupName)
-                          .map((g) => (
-                            <option key={g.name} value={g.name}>
-                              {g.name}
-                            </option>
-                          ))}
-                      </select>
+                    <td className="text-muted">{groupName || "—"}</td>
+                    <td className="text-muted">{entry ? SOURCE_LABEL[entry.source] : "—"}</td>
+                    <td className="text-muted">{entry?.mode ? MODE_SHORT[entry.mode] : "不变"}</td>
+                    <td>{renderStatus(entry, file.id)}</td>
+                    <td>
+                      <span onClick={(e) => e.stopPropagation()}>
+                        <Select
+                          value=""
+                          onChange={(value) => {
+                            if (value) moveFile(file.id, value);
+                          }}
+                          options={[
+                            { value: "", label: "移至…" },
+                            ...groups
+                              .filter((g) => g.name !== groupName)
+                              .map((g) => ({ value: g.name, label: g.name })),
+                          ]}
+                        />
+                      </span>
                     </td>
                   </tr>
                 );
@@ -254,15 +241,15 @@ export default function FileList() {
             </tbody>
           </table>
         ) : (
-          <table className="w-full border-collapse text-[12px]">
-            <thead className="sticky top-0 bg-surface-2 text-[11px] text-faint">
+          <table className="grid-table">
+            <thead>
               <tr>
-                <th className="px-2 py-1 text-left font-normal">分组</th>
-                <th className="px-2 py-1 text-left font-normal">文件数</th>
-                <th className="px-2 py-1 text-left font-normal">类型</th>
-                <th className="px-2 py-1 text-left font-normal">生效设置来源</th>
-                <th className="px-2 py-1 text-left font-normal">改组将被改为</th>
-                <th className="px-2 py-1 text-left font-normal">操作</th>
+                <th>分组</th>
+                <th>文件数</th>
+                <th>类型</th>
+                <th>生效设置来源</th>
+                <th>将被改为</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -288,11 +275,11 @@ export default function FileList() {
                   <tr
                     key={group.name}
                     onClick={() => setScope({ type: "group", name: group.name })}
-                    className={`cursor-pointer border-b border-border/60 ${
-                      active ? "bg-accent-soft" : isMerging ? "bg-warn-soft" : "hover:bg-surface-2"
+                    className={`cursor-pointer ${
+                      active ? "row-active" : isMerging ? "bg-warn-soft" : "row-idle"
                     }`}
                   >
-                    <td className="px-2 py-1">
+                    <td>
                       {renaming === group.name ? (
                         <input
                           autoFocus
@@ -310,62 +297,62 @@ export default function FileList() {
                             }
                             if (e.key === "Escape") setRenaming(null);
                           }}
-                          className="w-full rounded border border-accent bg-surface px-1 py-0.5 font-mono text-[11px] outline-none"
+                          className="input"
                         />
                       ) : (
                         <span className="font-medium">{group.name}</span>
                       )}
                     </td>
-                    <td className="px-2 py-1 text-muted">{group.fileIds.length}</td>
-                    <td className="px-2 py-1 text-muted">{kinds.join("、") || "—"}</td>
-                    <td className="px-2 py-1 text-muted">
-                      {changed.length === 0 ? "不变（保持原样）" : sources.join("、")}
+                    <td className="text-muted">{group.fileIds.length}</td>
+                    <td className="text-muted">{kinds.join("、") || "—"}</td>
+                    <td className="text-muted">
+                      {changed.length === 0 ? "不变" : sources.join("、")}
                     </td>
-                    <td className="px-2 py-1">
+                    <td>
                       {changed.length === 0 ? (
-                        <Badge tone="neutral">原地不动，不写出</Badge>
+                        <Tag>原地不动</Tag>
                       ) : (
-                        <Badge tone="accent">
+                        <Tag tone="accent">
                           {changed.length} 个 → {preview ? `${preview.width}×${preview.height}` : "—"}
-                        </Badge>
+                        </Tag>
                       )}
                     </td>
-                    <td className="px-2 py-1">
-                      <span className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                        <Button
-                          variant="ghost"
+                    <td>
+                      <span
+                        className="flex items-center gap-1"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          className="btn btn-ghost px-1.5 py-0"
                           onClick={() => {
                             setRenaming(group.name);
                             setRenameText(group.name);
                           }}
                         >
                           重命名
-                        </Button>
-                        <Button
-                          variant="ghost"
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-ghost px-1.5 py-0"
                           onClick={() => setMergeFrom(isMerging ? null : group.name)}
                         >
-                          {isMerging ? "取消合并" : "合并到…"}
-                        </Button>
+                          {isMerging ? "取消" : "合并"}
+                        </button>
                         {isMerging && (
-                          <select
-                            autoFocus
-                            className="rounded border border-border bg-surface px-1 py-0.5 text-[11px]"
+                          <Select
                             value=""
-                            onChange={(e) => {
-                              if (e.target.value) mergeGroups(group.name, e.target.value);
+                            onChange={(value) => {
+                              if (value) mergeGroups(group.name, value);
                               setMergeFrom(null);
                             }}
-                          >
-                            <option value="">选择目标组</option>
-                            {groups
-                              .filter((g) => g.name !== group.name)
-                              .map((g) => (
-                                <option key={g.name} value={g.name}>
-                                  {g.name}
-                                </option>
-                              ))}
-                          </select>
+                            options={[
+                              { value: "", label: "合并到…" },
+                              ...groups
+                                .filter((g) => g.name !== group.name)
+                                .map((g) => ({ value: g.name, label: g.name })),
+                            ]}
+                          />
                         )}
                       </span>
                     </td>
@@ -378,17 +365,15 @@ export default function FileList() {
 
         {/* 已跳过清单（规范 5.5 / 场景 8） */}
         {stats.skipped > 0 && (
-          <details className="border-t border-border bg-surface-2 px-3 py-1.5">
-            <summary className="cursor-pointer text-[12px] text-muted">
-              已跳过 {stats.skipped} 个文件
-            </summary>
-            <ul className="mt-1 space-y-0.5">
+          <details className="fold">
+            <summary>已跳过 {stats.skipped} 个文件</summary>
+            <ul className="mt-1.5 space-y-1">
               {files
                 .filter((f) => f.skipReason !== null)
                 .map((f) => (
                   <li key={f.id} className="flex gap-2 text-[11px]">
-                    <span className="font-mono text-muted">{f.relativePath}</span>
-                    <span className="text-faint">
+                    <span className="truncate font-mono text-muted">{f.relativePath}</span>
+                    <span className="shrink-0 text-faint">
                       {f.skipReason} · {formatBytes(f.size)}
                     </span>
                   </li>
@@ -397,6 +382,6 @@ export default function FileList() {
           </details>
         )}
       </div>
-    </div>
+    </Panel>
   );
 }
