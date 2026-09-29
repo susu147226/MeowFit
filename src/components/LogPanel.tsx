@@ -9,7 +9,7 @@ const LEVEL_CLASS = {
   ERROR: "text-danger",
 } as const;
 
-export default function LogPanel() {
+export default function LogPanel({ height }: { height?: number }) {
   const logs = useStore((s) => s.logs);
   const [open, setOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -39,7 +39,10 @@ export default function LogPanel() {
       </div>
 
       {open && (
-        <div className="min-h-0 flex-1 overflow-auto px-3.5 py-2 font-mono text-[11px] leading-relaxed">
+        <div
+          className="min-h-0 overflow-auto px-3.5 py-2 font-mono text-[11px] leading-relaxed"
+          style={{ height: height ?? 190 }}
+        >
           {logs.length === 0 ? (
             <p className="py-2 text-faint">暂无日志</p>
           ) : (

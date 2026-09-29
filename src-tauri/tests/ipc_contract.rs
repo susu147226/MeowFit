@@ -443,13 +443,20 @@ fn appearance_settings_shape_and_defaults() {
     assert_eq!(value["theme"]["backgroundImage"], json!("D:/预览/bg.png"));
     assert_eq!(value["theme"]["sidebarWidth"], json!(300));
 
-    // 默认外观：跟随系统、无背景图、标准密度
+    // 默认外观：跟随系统、无背景图、标准密度、天蓝色主题、默认布局
     let fresh = meowfit_lib::config::Settings::default();
     assert_eq!(fresh.theme.mode, "system", "外观默认必须跟随系统");
     assert!(fresh.theme.background_image.is_none());
     assert_eq!(fresh.theme.density, "standard");
     assert!(fresh.theme.auto_scrim, "默认应开启自动加蒙层");
     assert_eq!(fresh.theme.sidebar_width, 350);
+    assert_eq!(fresh.theme.preview_width, 350);
+    assert_eq!(fresh.theme.run_height, 280);
+    assert_eq!(fresh.theme.log_height, 190);
+    assert_eq!(
+        fresh.theme.accent, "#2F8BD0",
+        "默认主题色应为天蓝色，且该值在两套外观下都不需要校正"
+    );
 
     // 旧配置缺字段时退回默认值而不是加载失败
     let legacy: meowfit_lib::config::Settings = serde_json::from_value(json!({

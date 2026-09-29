@@ -9,7 +9,14 @@ const STATUS_TONE: Record<Status, "ok" | "neutral" | "warn" | "danger"> = {
   failed: "danger",
 };
 
-export default function RunPanel({ className = "" }: { className?: string }) {
+export default function RunPanel({
+  className = "",
+  height,
+}: {
+  className?: string;
+  /** 由分隔条拖拽出来的高度（个性化布局） */
+  height?: number;
+}) {
   const plan = useStore((s) => s.plan);
   const files = useStore((s) => s.files);
   const report = useStore((s) => s.report);
@@ -24,6 +31,7 @@ export default function RunPanel({ className = "" }: { className?: string }) {
     <Panel
       title="执行与进度区"
       className={className}
+      height={height}
       right={
         <Button variant="primary" disabled={!canRun} onClick={() => void execute()}>
           {running ? "执行中…" : "执行"}

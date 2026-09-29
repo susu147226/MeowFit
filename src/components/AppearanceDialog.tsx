@@ -1,6 +1,13 @@
 import { pickBackgroundImage } from "../api";
 import { useStore } from "../store";
-import { ACCENT_PRESETS, DENSITY_LABEL, THEME_MODE_LABEL, type Density, type ThemeMode } from "../types";
+import {
+  ACCENT_PRESETS,
+  DEFAULT_LAYOUT,
+  DENSITY_LABEL,
+  THEME_MODE_LABEL,
+  type Density,
+  type ThemeMode,
+} from "../types";
 import { Button, Checkbox, Field, Tag } from "./ui";
 
 const MODES: ThemeMode[] = ["system", "light", "dark"];
@@ -150,14 +157,16 @@ export default function AppearanceDialog() {
             </>
           )}
 
-          <Field label="界面布局" hint="可直接拖动主界面中两条竖向分隔条调整各列宽度">
-            <div className="flex items-center gap-2">
+          <Field
+            label="界面布局"
+            hint="主界面四条分隔条都可以直接拖动：列表｜参数、参数｜预览、预览／执行、主区｜日志"
+          >
+            <div className="flex flex-wrap items-center gap-2">
               <span className="font-mono text-[11px] text-faint">
-                参数列 {theme.sidebarWidth}px · 预览列 {theme.previewWidth}px
+                参数列 {theme.sidebarWidth} · 预览列 {theme.previewWidth} · 执行 {theme.runHeight} · 日志{" "}
+                {theme.logHeight}
               </span>
-              <Button onClick={() => void setTheme({ sidebarWidth: 350, previewWidth: 350 })}>
-                恢复默认列宽
-              </Button>
+              <Button onClick={() => void setTheme({ ...DEFAULT_LAYOUT })}>恢复默认布局</Button>
             </div>
           </Field>
         </div>
@@ -172,8 +181,7 @@ export default function AppearanceDialog() {
                 backgroundImage: null,
                 backgroundOpacity: 100,
                 autoScrim: true,
-                sidebarWidth: 350,
-                previewWidth: 350,
+                ...DEFAULT_LAYOUT,
               })
             }
           >

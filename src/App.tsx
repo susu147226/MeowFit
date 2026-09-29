@@ -11,12 +11,30 @@ import ScanBar from "./components/ScanBar";
 import SettingsPanel from "./components/SettingsPanel";
 import TopBar from "./components/TopBar";
 import { useStore } from "./store";
+import { DEFAULT_LAYOUT } from "./types";
 
-const MIN_COLUMN = 260;
-const MAX_COLUMN = 560;
+const MIN_WIDTH = 240;
+const MAX_WIDTH = 620;
+const MIN_RUN_HEIGHT = 120;
+const MAX_RUN_HEIGHT = 620;
+const MIN_LOG_HEIGHT = 80;
+const MAX_LOG_HEIGHT = 420;
 
-/** 可拖拽的分隔条：用于个性化调整各列宽度（规范第七节）。 */
-function Divider({ onDrag, onCommit }: { onDrag: (delta: number) => void; onCommit: () => void }) {
+/**
+ * 可拖拽的分隔条（规范第七节允许个性化布局）。
+ *
+ * `vertical` 拖动改宽度，`horizontal` 拖动改高度；拖动期间只更新本地状态跟手，
+ * 松手后才落盘，避免每移动一像素就写一次配置。
+ */
+function Splitter({
+  orientation,
+  onDrag,
+  onCommit,
+}: {
+  orientation: "vertical" | "horizontal";
+  onDrag: (delta: number) => void;
+  onCommit: () => void;
+}) {
   const [dragging, setDragging] = useState(false);
   const dragRef = useRef(onDrag);
   const commitRef = useRef(onCommit);
@@ -25,7 +43,8 @@ function Divider({ onDrag, onCommit }: { onDrag: (delta: number) => void; onComm
 
   useEffect(() => {
     if (!dragging) return;
-    const move = (event: MouseEvent) => dragRef.current(event.movementX);
+    const move = (event: MouseEvent) =>
+      dragRef.current(orientation === "vertical" ? event.movementX : event.movementY);
     const up = () => {
       setDragging(false);
       commitRef.current();
@@ -36,16 +55,16 @@ function Divider({ onDrag, onCommit }: { onDrag: (delta: number) => void; onComm
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
     };
-  }, [dragging]);
+  }, [dragging, orientation]);
 
+  const base = orientation === "vertical" ? "w-[3px] cursor-col-resize" : "h-[3px] cursor-row-resize";
   return (
     <div
       role="separator"
-      aria-orientation="vertical"
+      aria-orientation={orientation}
+      title="拖动以调整布局"
       onMouseDown={() => setDragging(true)}
-      className={`w-[3px] shrink-0 cursor-col-resize transition ${
-        dragging ? "bg-accent" : "bg-border hover:bg-accent"
-      }`}
+      className={`${base} shrink-0 transition ${dragging ? "bg-accent" : "bg-border hover:bg-accent"}`}
     />
   );
 }
@@ -58,12 +77,16 @@ export default function App() {
   const theme = useStore((s) => s.settings?.theme);
   const setTheme = useStore((s) => s.setTheme);
 
-  // 拖拽期间用本地值实时跟手，松手后再落盘，避免每移动一像素就写一次配置
+  // 拖拽期间用本地值实时跟手，松手后再落盘
   const [dragSidebar, setDragSidebar] = useState<number | null>(null);
   const [dragPreview, setDragPreview] = useState<number | null>(null);
+  const [dragRun, setDragRun] = useState<number | null>(null);
+  const [dragLog, setDragLog] = useState<number | null>(null);
 
-  const sidebarWidth = dragSidebar ?? theme?.sidebarWidth ?? 350;
-  const previewWidth = dragPreview ?? theme?.previewWidth ?? 350;
+  const sidebarWidth = dragSidebar ?? theme?.sidebarWidth ?? DEFAULT_LAYOUT.sidebarWidth;
+  const previewWidth = dragPreview ?? theme?.previewWidth ?? DEFAULT_LAYOUT.previewWidth;
+  const runHeight = dragRun ?? theme?.runHeight ?? DEFAULT_LAYOUT.runHeight;
+  const logHeight = dragLog ?? theme?.logHeight ?? DEFAULT_LAYOUT.logHeight;
 
   useEffect(() => {
     void init();
@@ -87,7 +110,8 @@ export default function App() {
     document.documentElement.dataset.bg = backgroundUrl ? "on" : "off";
   }, [backgroundUrl]);
 
-  const clamp = (value: number) => Math.max(MIN_COLUMN, Math.min(MAX_COLUMN, value));
+  const clamp = (value: number, min: number, max: number) =>
+    Math.max(min, Math.min(max, value));
 
   return (
     <>
@@ -108,36 +132,58 @@ export default function App() {
         <TopBar />
         <ScanBar />
 
-        {/* 主工作区：素材列表区 ｜ 参数设置区 ｜ 预览区 + 执行与进度区（规范第七节）；
-            列宽可由分隔条拖动，属个性化布局设置 */}
+        {/* 主工作区（规范第七节）；四条分隔条均可拖动，属个性化布局 */}
         <div className="flex min-h-0 flex-1 bg-surface">
-          <FileList className="min-w-[260px] flex-1" />
+          <FileList className="min-w-[240px] flex-1" />
 
-          <Divider
-            onDrag={(delta) => setDragSidebar((v) => clamp((v ?? sidebarWidth) + delta))}
+          <Splitter
+            orientation="vertical"
+            onDrag={(d) => setDragSidebar((v) => clamp((v ?? sidebarWidth) + d, MIN_WIDTH, MAX_WIDTH))}
             onCommit={() => {
               if (dragSidebar !== null) void setTheme({ sidebarWidth: dragSidebar });
               setDragSidebar(null);
             }}
           />
 
-          <SettingsPanel className="shrink-0 border-l border-border" width={sidebarWidth} />
+          <SettingsPanel className="shrink-0" width={sidebarWidth} />
 
-          <Divider
-            onDrag={(delta) => setDragPreview((v) => clamp((v ?? previewWidth) + delta))}
+          <Splitter
+            orientation="vertical"
+            onDrag={(d) => setDragPreview((v) => clamp((v ?? previewWidth) + d, MIN_WIDTH, MAX_WIDTH))}
             onCommit={() => {
               if (dragPreview !== null) void setTheme({ previewWidth: dragPreview });
               setDragPreview(null);
             }}
           />
 
-          <div className="flex shrink-0 flex-col border-l border-border" style={{ width: previewWidth }}>
+          <div className="flex shrink-0 flex-col" style={{ width: previewWidth }}>
             <PreviewPanel className="min-h-0 flex-1" />
-            <RunPanel className="max-h-[46%] shrink-0 border-t border-border" />
+            <Splitter
+              orientation="horizontal"
+              onDrag={(d) =>
+                setDragRun((v) => clamp((v ?? runHeight) + d, MIN_RUN_HEIGHT, MAX_RUN_HEIGHT))
+              }
+              onCommit={() => {
+                if (dragRun !== null) void setTheme({ runHeight: dragRun });
+                setDragRun(null);
+              }}
+            />
+            <RunPanel className="shrink-0" height={runHeight} />
           </div>
         </div>
 
-        <LogPanel />
+        <Splitter
+          orientation="horizontal"
+          onDrag={(d) => {
+            // 向上拖 = 日志变高，因此取反
+            setDragLog((v) => clamp((v ?? logHeight) - d, MIN_LOG_HEIGHT, MAX_LOG_HEIGHT));
+          }}
+          onCommit={() => {
+            if (dragLog !== null) void setTheme({ logHeight: dragLog });
+            setDragLog(null);
+          }}
+        />
+        <LogPanel height={logHeight} />
       </div>
 
       {aboutOpen && <AboutDialog />}

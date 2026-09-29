@@ -114,6 +114,12 @@ pub struct ThemeConfig {
     /// 预览与执行列宽度（px）
     #[serde(default = "default_sidebar_width")]
     pub preview_width: u32,
+    /// 右列中「执行与进度区」的高度（px），可由分隔条拖动
+    #[serde(default = "default_run_height")]
+    pub run_height: u32,
+    /// 日志区展开时的高度（px），可由分隔条拖动
+    #[serde(default = "default_log_height")]
+    pub log_height: u32,
 }
 
 fn default_true() -> bool {
@@ -121,7 +127,8 @@ fn default_true() -> bool {
 }
 
 fn default_accent() -> String {
-    "#A8763A".into()
+    // 默认天蓝色（该值在浅色与深色下都无需校正，选它即所见即所得）
+    "#2F8BD0".into()
 }
 
 fn default_density() -> String {
@@ -130,6 +137,14 @@ fn default_density() -> String {
 
 fn default_sidebar_width() -> u32 {
     350
+}
+
+fn default_run_height() -> u32 {
+    280
+}
+
+fn default_log_height() -> u32 {
+    190
 }
 
 impl Default for ThemeConfig {
@@ -143,6 +158,8 @@ impl Default for ThemeConfig {
             density: default_density(),
             sidebar_width: default_sidebar_width(),
             preview_width: default_sidebar_width(),
+            run_height: default_run_height(),
+            log_height: default_log_height(),
         }
     }
 }

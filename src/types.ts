@@ -240,6 +240,10 @@ export interface ThemeSettings {
   sidebarWidth: number;
   /** 预览与执行列宽度（px） */
   previewWidth: number;
+  /** 右列中「执行与进度区」的高度（px） */
+  runHeight: number;
+  /** 日志区展开时的高度（px） */
+  logHeight: number;
 }
 
 export const THEME_MODE_LABEL: Record<ThemeMode, string> = {
@@ -254,15 +258,24 @@ export const DENSITY_LABEL: Record<Density, string> = {
   relaxed: "宽松",
 };
 
-/** 预设配色（规范第七节允许个性化配色） */
+/** 预设配色（规范第七节允许个性化配色）；天蓝为默认 */
 export const ACCENT_PRESETS: { name: string; value: string }[] = [
-  { name: "奶油棕", value: "#A8763A" },
-  { name: "墨绿", value: "#2F6F4F" },
+  { name: "天蓝（默认）", value: "#2F8BD0" },
   { name: "靛蓝", value: "#2F5FA8" },
+  { name: "墨绿", value: "#2F6F4F" },
   { name: "莓紫", value: "#7A4A9E" },
   { name: "砖红", value: "#B3452F" },
+  { name: "奶油棕", value: "#A8763A" },
   { name: "石墨", value: "#4A4E57" },
 ];
+
+/** 布局的出厂值，供「恢复默认布局」使用 */
+export const DEFAULT_LAYOUT = {
+  sidebarWidth: 350,
+  previewWidth: 350,
+  runHeight: 280,
+  logHeight: 190,
+} as const;
 
 export interface Settings {
   version: number;

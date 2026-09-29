@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 /** 五个主分区共用的面板外壳（规范第七节）。 */
 export function Panel({
@@ -7,6 +7,7 @@ export function Panel({
   children,
   className = "",
   width,
+  height,
 }: {
   title: string;
   right?: ReactNode;
@@ -14,11 +15,16 @@ export function Panel({
   className?: string;
   /** 由分隔条拖拽出来的列宽（个性化布局） */
   width?: number;
+  /** 由分隔条拖拽出来的高度（个性化布局） */
+  height?: number;
 }) {
+  const style: CSSProperties = {};
+  if (width !== undefined) style.width = width;
+  if (height !== undefined) style.height = height;
   return (
     <section
       className={`flex min-h-0 flex-col overflow-hidden ${className}`}
-      style={width === undefined ? undefined : { width }}
+      style={Object.keys(style).length > 0 ? style : undefined}
     >
       <div className="panel-head">
         <h2 className="panel-title">{title}</h2>
