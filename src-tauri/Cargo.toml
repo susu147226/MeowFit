@@ -1,0 +1,33 @@
+[package]
+name = "meowfit"
+version = "0.1.0"
+description = "喵尺 MeowFit — 本地媒体尺寸批量调整工具（仅 Windows）"
+authors = ["云舒眠眠"]
+edition = "2021"
+# 本项目采用自定义的专有许可证，非 OSI 认可的开源许可证。
+# 条款见仓库根目录的 LICENSE 文件。
+license-file = "../LICENSE"
+publish = false
+
+[lib]
+# `_lib` 后缀用于避免 Windows 上 lib 名与 bin 名冲突
+# https://github.com/rust-lang/cargo/issues/8519
+name = "meowfit_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# 体积优化：https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true

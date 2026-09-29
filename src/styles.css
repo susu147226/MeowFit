@@ -1,0 +1,129 @@
+/* ============================================================
+   喵尺 MeowFit — 基础样式
+   设计取向：紧凑、务实的本地工具界面。全部尺寸以 CSS 自定义属性
+   定义，浅色 / 深色两套变量，便于后续阶段整体调色。
+   ============================================================ */
+
+:root {
+  --bg: #f7f6f3;
+  --surface: #ffffff;
+  --surface-2: #fbfaf8;
+  --border: #e4e1db;
+  --border-strong: #cfcac1;
+  --text: #1d1b18;
+  --text-muted: #6d6862;
+  --text-faint: #9c968e;
+  --accent: #a8763a;
+  --accent-hover: #91632e;
+  --accent-soft: #f5ede1;
+  --radius: 7px;
+  --radius-sm: 5px;
+  --mono: "Cascadia Mono", Consolas, "Courier New", monospace;
+  --sans: "Microsoft YaHei", "PingFang SC", "Segoe UI", -apple-system, sans-serif;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17161a;
+    --surface: #1f1e23;
+    --surface-2: #24232a;
+    --border: #322f38;
+    --border-strong: #423e49;
+    --text: #e8e6e3;
+    --text-muted: #a09a94;
+    --text-faint: #6d6862;
+    --accent: #d3a06a;
+    --accent-hover: #e0b184;
+    --accent-soft: #2c2622;
+
+    color-scheme: dark;
+  }
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- 应用外壳 ---------- */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.app-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 14px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.app-version {
+  color: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.app-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.app-placeholder {
+  margin: 0;
+  padding: 20px 28px;
+  background: var(--accent-soft);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+}
+
+.app-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-faint);
+  font-size: 12px;
+}
