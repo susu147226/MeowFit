@@ -1,7 +1,7 @@
 {
   "name": "meowfit",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "description": "喵尺 MeowFit — 本地媒体尺寸批量调整工具（仅 Windows）",
   "author": "云舒眠眠",
