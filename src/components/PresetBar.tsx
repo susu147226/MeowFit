@@ -7,10 +7,7 @@ import { Button, Field, Select, Tag } from "./ui";
 /** 预设条（规范 6.12）：套用内置与自定义预设，也可把当前作用域的设置存成新预设。 */
 export default function PresetBar({ current }: { current: Setting | null }) {
   const presets = useStore((s) => s.presets);
-  const scope = useStore((s) => s.scope);
-  const applyPreset = useStore((s) => s.setGlobalSetting);
-  const setGroupTier = useStore((s) => s.setGroupTier);
-  const setFileSetting = useStore((s) => s.setFileSetting);
+  const applyPreset = useStore((s) => s.applyPreset);
   const saveCurrentAsPreset = useStore((s) => s.saveCurrentAsPreset);
   const renamePreset = useStore((s) => s.renamePreset);
   const removePreset = useStore((s) => s.removePreset);
@@ -20,13 +17,11 @@ export default function PresetBar({ current }: { current: Setting | null }) {
   const visible = presets.filter((p) => !p.hidden);
   if (visible.length === 0) return null;
 
-  /** 预设套用到当前作用域 */
+  /** 预设套用到当前作用域；自定义预设还会应用整份配置（处理参数/输出规则/分组方式） */
   const apply = (id: string) => {
     const preset = presets.find((p) => p.id === id);
     if (!preset) return;
-    if (scope.type === "global") applyPreset(preset.setting);
-    else if (scope.type === "group") setGroupTier(scope.name, { kind: "explicit", setting: preset.setting });
-    else setFileSetting(scope.id, preset.setting);
+    applyPreset(preset);
   };
 
   return (

@@ -199,13 +199,14 @@ pub fn add_preset(
     state: State<'_, AppState>,
     name: String,
     setting: Setting,
+    config: Option<presets::PresetConfig>,
 ) -> Result<PresetStore, String> {
     let mut store = presets::load(&state.config_dir);
     let seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos() as u64)
         .unwrap_or(0);
-    presets::add_user(&mut store, &name, setting, seed);
+    presets::add_user(&mut store, &name, setting, config, seed);
     presets::save(&state.config_dir, &store)?;
     Ok(store)
 }

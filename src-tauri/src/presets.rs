@@ -9,9 +9,20 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::{Mode, Setting};
+use crate::config::{OutputConfig, ProcessingConfig};
+use crate::model::{Grouping, Mode, Setting};
 
 pub const PRESETS_FILE: &str = "presets.json";
+
+/// 用户预设的整份配置快照（规范 6.12：缩放方式 + 参数 + 输出规则 + 分组规则）。
+/// 内置预设只有缩放设置（setting），不含此快照。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresetConfig {
+    pub processing: ProcessingConfig,
+    pub output: OutputConfig,
+    pub grouping: Grouping,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,6 +35,9 @@ pub struct Preset {
     #[serde(default)]
     pub hidden: bool,
     pub setting: Setting,
+    /// 完整配置快照；内置预设为 None
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config: Option<PresetConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,6 +70,7 @@ pub fn builtin_presets() -> Vec<Preset> {
             builtin: true,
             hidden: false,
             setting: Setting::width_height(Mode::B, *width as f64, *height as f64),
+            config: None,
         })
         .collect()
 }
@@ -114,13 +129,20 @@ pub fn save(config_dir: &Path, store: &PresetStore) -> Result<(), String> {
 }
 
 /// 新增用户预设。
-pub fn add_user(store: &mut PresetStore, name: &str, setting: Setting, seed: u64) -> Preset {
+pub fn add_user(
+    store: &mut PresetStore,
+    name: &str,
+    setting: Setting,
+    config: Option<PresetConfig>,
+    seed: u64,
+) -> Preset {
     let preset = Preset {
         id: format!("user-{seed:016x}"),
         name: name.to_string(),
         builtin: false,
         hidden: false,
         setting,
+        config,
     };
     store.presets.push(preset.clone());
     preset
@@ -187,7 +209,7 @@ mod tests {
     fn user_preset_round_trips_across_restarts() {
         let config = temp_config("round");
         let mut store = PresetStore::default();
-        add_user(&mut store, "我的 800×600", Setting::width_height(Mode::B, 800.0, 600.0), 42);
+        add_user(&mut store, "我的 800×600", Setting::width_height(Mode::B, 800.0, 600.0), None, 42);
         save(&config, &store).unwrap();
 
         // 重新读取（等价于重启程序）
@@ -219,7 +241,7 @@ mod tests {
     #[test]
     fn user_preset_can_be_deleted() {
         let mut store = PresetStore::default();
-        let preset = add_user(&mut store, "临时", Setting::scale(Mode::A, 2.0), 7);
+        let preset = add_user(&mut store, "临时", Setting::scale(Mode::A, 2.0), None, 7);
         assert_eq!(store.user_presets().count(), 1);
         remove_or_hide(&mut store, &preset.id).unwrap();
         assert_eq!(store.user_presets().count(), 0, "用户预设应被真正删除");

@@ -220,7 +220,7 @@ impl Default for ThemeConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OutputConfig {
     pub directory: String,
@@ -233,6 +233,9 @@ pub struct OutputConfig {
     /// 输出格式：keep | png | jpeg | webp（规范 6.8 的格式转换）
     #[serde(default = "default_output_format")]
     pub output_format: String,
+    /// 最近用过的输出目录（最多 10 条），减少重复选择
+    #[serde(default)]
+    pub recent_output_dirs: Vec<String>,
 }
 
 fn default_output_format() -> String {
@@ -249,11 +252,12 @@ impl Default for OutputConfig {
             background_fill_color: "#FFFFFF".into(),
             strip_redundant_metadata: true,
             output_format: default_output_format(),
+            recent_output_dirs: Vec::new(),
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProcessingConfig {
     pub concurrency: u32,

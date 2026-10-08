@@ -136,6 +136,7 @@ interface MeowState {
   refreshDiskFree: () => Promise<void>;
   refreshPresets: () => Promise<void>;
   saveCurrentAsPreset: (name: string) => Promise<void>;
+  applyPreset: (preset: Preset) => void;
   renamePreset: (id: string, name: string) => Promise<void>;
   removePreset: (id: string) => Promise<void>;
   setProcessing: (patch: Partial<Settings["processing"]>) => void;
@@ -498,7 +499,21 @@ export const useStore = create<MeowState>((set, get) => ({
   },
 
   setOutputMode: (mode) => set({ outputMode: mode }),
-  setUserOutputDir: (dir) => set({ userOutputDir: dir }),
+  setUserOutputDir: (dir) => {
+    set({ userOutputDir: dir });
+    // 记录最近使用的输出目录（最多 10 条），并持久化
+    const settings = get().settings;
+    if (!settings) return;
+    const recent = [
+      dir,
+      ...(settings.output.recentOutputDirs ?? []).filter((d) => d !== dir),
+    ].slice(0, 10);
+    const next: Settings = { ...settings, output: { ...settings.output, recentOutputDirs: recent } };
+    set({ settings: next });
+    api
+      .saveSettings(next)
+      .catch((error) => get().log("ERROR", `保存最近输出目录失败：${String(error)}`));
+  },
   setDryRun: (value) => set({ dryRun: value }),
   setBackup: (value) => set({ backup: value }),
   setSkipUnchanged: (value) => set({ skipUnchanged: value }),
@@ -547,12 +562,38 @@ export const useStore = create<MeowState>((set, get) => ({
       return;
     }
     try {
-      const store = await api.addPreset(name, current);
+      // 保存整份配置：缩放设置 + 处理参数 + 输出规则 + 分组方式（规范 6.12）
+      const config = state.settings
+        ? {
+            processing: state.settings.processing,
+            output: state.settings.output,
+            grouping: state.grouping,
+          }
+        : null;
+      const store = await api.addPreset(name, current, config);
       set({ presets: store.presets });
       get().log("INFO", `已保存预设「${name}」`);
     } catch (error) {
       get().log("ERROR", `保存预设失败：${String(error)}`);
     }
+  },
+
+  /// 应用预设：缩放设置落到当前作用域，整份配置（处理参数/输出规则/分组方式）全局生效
+  applyPreset: (preset) => {
+    const scope = get().scope;
+    if (scope.type === "global") get().setGlobalSetting(preset.setting);
+    else if (scope.type === "group")
+      get().setGroupTier(scope.name, { kind: "explicit", setting: preset.setting });
+    else get().setFileSetting(scope.id, preset.setting);
+
+    if (preset.config) {
+      const { processing, output, grouping } = preset.config;
+      get().setProcessing(processing);
+      // 最近输出目录是界面行为记录，不应被预设覆盖
+      get().setOutput(output);
+      if (grouping !== get().grouping) get().requestGrouping(grouping);
+    }
+    get().log("INFO", `已应用预设「${preset.name}」`);
   },
 
   renamePreset: async (id, name) => {

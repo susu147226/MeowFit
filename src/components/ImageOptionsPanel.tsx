@@ -4,31 +4,26 @@ import {
   RESAMPLE_LABEL,
   type OutputFormat,
   type Resample,
-  type SvgSizeMode,
 } from "../types";
-import { Checkbox, Field, Select, Tag, TextInput } from "./ui";
+import { Checkbox, Field, Select, Tag } from "./ui";
 
 const RESAMPLES: Resample[] = ["lanczos3", "bicubic", "bilinear", "nearest"];
 const FORMATS: OutputFormat[] = ["keep", "png", "jpeg", "webp"];
-const SVG_MODES: SvgSizeMode[] = ["pixel", "dpi"];
 
 /**
- * 图片处理参数（规范 6.8 / 10.5）。
+ * 图片处理参数（规范 6.8）。SVG 专属项已拆到 SvgOptionsPanel。
  *
  * 这些是**全局**设置（写入 `settings.json`），与上方按整体 / 分组 / 单文件分层的
  * 缩放参数不是一回事，因此单独成块。
  */
 export default function ImageOptionsPanel() {
   const settings = useStore((s) => s.settings);
-  const files = useStore((s) => s.files);
   const setProcessing = useStore((s) => s.setProcessing);
   const setOutput = useStore((s) => s.setOutput);
 
   if (!settings) return null;
 
   const { processing, output } = settings;
-  const hasSvg = files.some((f) => f.kind === "svg");
-  const svgUndeclared = files.some((f) => f.kind === "svg" && !f.svgDeclared);
   const converting = output.outputFormat !== "keep";
 
   return (
@@ -86,39 +81,6 @@ export default function ImageOptionsPanel() {
           className="h-7 w-full cursor-pointer rounded-md border border-border bg-surface"
         />
       </Field>
-
-      {/* 未声明尺寸的 SVG 必须由用户选择基准方式（规范 10.5） */}
-      {(hasSvg || svgUndeclared) && (
-        <div className="space-y-2 rounded-md border border-border bg-surface-2 p-2.5">
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-semibold text-muted">SVG 基准尺寸</span>
-            {!svgUndeclared && <Tag>本次素材均已声明尺寸</Tag>}
-          </div>
-          <Select
-            value={processing.svgSizeMode}
-            onChange={(value) => setProcessing({ svgSizeMode: value as SvgSizeMode })}
-            options={SVG_MODES.map((m) => ({
-              value: m,
-              label: m === "pixel" ? "直接填写目标像素尺寸（默认）" : "按 DPI 换算",
-            }))}
-          />
-          {processing.svgSizeMode === "dpi" && (
-            <Field label="DPI" hint="基准像素 = viewBox 宽高 × DPI ÷ 96">
-              <TextInput
-                value={String(processing.svgDpi)}
-                onChange={(text) => {
-                  const value = Number(text);
-                  if (Number.isFinite(value) && value > 0) setProcessing({ svgDpi: value });
-                }}
-                placeholder="96"
-              />
-            </Field>
-          )}
-          <p className="text-[11px] leading-relaxed text-faint">
-            仅在 SVG 未声明 width / height 时生效；已声明尺寸的 SVG 始终以其声明值为基准。
-          </p>
-        </div>
-      )}
     </section>
   );
 }

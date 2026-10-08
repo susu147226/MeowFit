@@ -8,6 +8,7 @@ import { Button, Checkbox, Field, Select, Tag, TextInput } from "./ui";
 /** 执行选项（规范 6.5 / 6.7 / 6.13）。输出目录选择已移到顶部扫描栏。 */
 export default function OutputSettingsPanel() {
   const settings = useStore((s) => s.settings);
+  const files = useStore((s) => s.files);
   const dryRun = useStore((s) => s.dryRun);
   const backup = useStore((s) => s.backup);
   const skipUnchanged = useStore((s) => s.skipUnchanged);
@@ -35,6 +36,9 @@ export default function OutputSettingsPanel() {
   }, [setProgress]);
 
   if (!settings) return null;
+
+  // 「图片目标体积」只在本次素材里有位图 / SVG 时才显示，减少无关项的干扰
+  const hasImage = files.some((f) => f.kind === "raster" || f.kind === "svg");
 
   return (
     <section className="space-y-3 border-t border-border pt-3">
@@ -109,18 +113,20 @@ export default function OutputSettingsPanel() {
         </div>
       )}
 
-      <Field label="图片目标体积上限（KB）" hint="留空表示不限制；填写后按阶梯逐级逼近，不会无限尝试">
-        <TextInput
-          value={settings.output.targetBytesKb ? String(settings.output.targetBytesKb) : ""}
-          placeholder="例如 500"
-          onChange={(text) => {
-            const kb = Number(text.trim());
-            void setOutput({
-              targetBytesKb: text.trim() === "" || !Number.isFinite(kb) || kb <= 0 ? null : Math.round(kb),
-            });
-          }}
-        />
-      </Field>
+      {hasImage && (
+        <Field label="图片目标体积上限（KB）" hint="留空表示不限制；填写后按阶梯逐级逼近，不会无限尝试">
+          <TextInput
+            value={settings.output.targetBytesKb ? String(settings.output.targetBytesKb) : ""}
+            placeholder="例如 500"
+            onChange={(text) => {
+              const kb = Number(text.trim());
+              void setOutput({
+                targetBytesKb: text.trim() === "" || !Number.isFinite(kb) || kb <= 0 ? null : Math.round(kb),
+              });
+            }}
+          />
+        </Field>
+      )}
     </section>
   );
 }

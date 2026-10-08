@@ -263,6 +263,13 @@ export interface ProgressEvent {
 /** 输出目录方式（规范 6.5） */
 export type OutputMode = "sibling" | "user";
 
+/** 用户预设的整份配置快照（缩放 + 处理参数 + 输出规则 + 分组方式，规范 6.12） */
+export interface PresetConfig {
+  processing: Settings["processing"];
+  output: Settings["output"];
+  grouping: Grouping;
+}
+
 /** 预设（规范 6.12）。id 内置为 builtin-*，用户预设为 user-* */
 export interface Preset {
   id: string;
@@ -271,6 +278,8 @@ export interface Preset {
   /** 内置预设可隐藏但不可删除 */
   hidden: boolean;
   setting: Setting;
+  /** 完整配置快照；内置预设为 null */
+  config?: PresetConfig | null;
 }
 
 export interface PresetStore {
@@ -378,6 +387,8 @@ export interface Settings {
     outputFormat: OutputFormat;
     /** 图片目标体积上限（KB）；null 表示不限制（规范 6.11） */
     targetBytesKb?: number | null;
+    /** 最近用过的输出目录（最多 10 条） */
+    recentOutputDirs: string[];
   };
   processing: {
     concurrency: number;

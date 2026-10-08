@@ -22,6 +22,8 @@ export default function ScanBar() {
   const outputDir = useStore((s) => s.outputDir);
   const setOutputMode = useStore((s) => s.setOutputMode);
   const setUserOutputDir = useStore((s) => s.setUserOutputDir);
+  const recentOutputDirs = useStore((s) => s.settings?.output.recentOutputDirs ?? EMPTY_FOLDERS);
+  const plan = useStore((s) => s.plan);
 
   const [dragging, setDragging] = useState(false);
   const [pathInput, setPathInput] = useState("");
@@ -166,6 +168,20 @@ export default function ScanBar() {
             >
               选择目录
             </Button>
+            {recentOutputDirs.length > 0 && (
+              <Select
+                className="max-w-[220px]"
+                title="最近使用的输出目录"
+                value=""
+                onChange={(dir) => {
+                  if (dir) setUserOutputDir(dir);
+                }}
+                options={[
+                  { value: "", label: `最近输出（${recentOutputDirs.length}）` },
+                  ...recentOutputDirs.map((d) => ({ value: d, label: d })),
+                ]}
+              />
+            )}
             <span className="min-w-0 truncate font-mono text-[11px] text-faint" title={userOutputDir ?? ""}>
               {userOutputDir ?? "尚未选择"}
             </span>
@@ -174,6 +190,15 @@ export default function ScanBar() {
         {outputMode !== "user" && outputDir && (
           <span className="min-w-0 truncate font-mono text-[11px] text-faint" title={outputDir}>
             {outputDir}
+          </span>
+        )}
+        {plan && (
+          <span className="ml-auto shrink-0 text-[11px] text-muted">
+            预计输出{" "}
+            <span className="font-mono text-accent">
+              {plan.entries.filter((e) => e.action === "resize" && !e.error).length}
+            </span>{" "}
+            个文件
           </span>
         )}
       </div>

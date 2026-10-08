@@ -10,6 +10,7 @@ import type {
   Grouping,
   Plan,
   PlanRequest,
+  PresetConfig,
   PresetStore,
   Setting,
   ScanOptions,
@@ -60,8 +61,8 @@ export const api = {
 
   /** 预设（规范 6.12） */
   loadPresets: () => invoke<PresetStore>("load_presets"),
-  addPreset: (name: string, setting: Setting) =>
-    invoke<PresetStore>("add_preset", { name, setting }),
+  addPreset: (name: string, setting: Setting, config: PresetConfig | null) =>
+    invoke<PresetStore>("add_preset", { name, setting, config }),
   renamePreset: (id: string, name: string) =>
     invoke<PresetStore>("rename_preset", { id, name }),
   removePreset: (id: string) => invoke<PresetStore>("remove_preset", { id }),

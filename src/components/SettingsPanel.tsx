@@ -8,6 +8,7 @@ import AnimationOptionsPanel from "./AnimationOptionsPanel";
 import ImageOptionsPanel from "./ImageOptionsPanel";
 import OutputSettingsPanel from "./OutputSettingsPanel";
 import PresetBar from "./PresetBar";
+import SvgOptionsPanel from "./SvgOptionsPanel";
 import VideoOptionsPanel from "./VideoOptionsPanel";
 import { Button, Checkbox, EmptyHint, Field, Panel, Select, Tag, TextInput } from "./ui";
 
@@ -105,6 +106,7 @@ export default function SettingsPanel({
     if (f?.kind) scopeKinds.add(f.kind);
   }
   const showImage = scopeKinds.has("raster") || scopeKinds.has("svg");
+  const showSvg = scopeKinds.has("svg");
   const showVideo = scopeKinds.has("video");
   const showAnimation = scopeKinds.has("animated");
 
@@ -477,6 +479,7 @@ export default function SettingsPanel({
         )}
 
         {showImage && <ImageOptionsPanel />}
+        {showSvg && <SvgOptionsPanel />}
         {showVideo && <VideoOptionsPanel />}
         {showAnimation && <AnimationOptionsPanel />}
         <OutputSettingsPanel />
