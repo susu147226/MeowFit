@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { parseDimension, parseScale } from "../lib/expression";
 import { referenceFor } from "../lib/planInput";
 import { useStore } from "../store";
-import { ANCHOR_LABEL, MODES, MODE_LABEL, type Anchor, type Mode, type Setting } from "../types";
+import { ANCHOR_LABEL, MODES, MODE_LABEL, type Anchor, type MediaKind, type Mode, type Setting } from "../types";
 import AnimationOptionsPanel from "./AnimationOptionsPanel";
 import ImageOptionsPanel from "./ImageOptionsPanel";
 import OutputSettingsPanel from "./OutputSettingsPanel";
@@ -92,6 +92,21 @@ export default function SettingsPanel({
           ? tier.setting
           : null
         : (fileSettings[scope.id] ?? null);
+
+  // 当前作用域涉及的素材类型：据此只显示相关的处理面板，减少冗余
+  const scopeKinds = new Set<MediaKind>();
+  if (scope.type === "global") {
+    for (const f of files) if (f.kind) scopeKinds.add(f.kind);
+  } else if (scope.type === "group") {
+    const ids = new Set(groups.find((g) => g.name === scope.name)?.fileIds ?? []);
+    for (const f of files) if (ids.has(f.id) && f.kind) scopeKinds.add(f.kind);
+  } else {
+    const f = files.find((f) => f.id === scope.id);
+    if (f?.kind) scopeKinds.add(f.kind);
+  }
+  const showImage = scopeKinds.has("raster") || scopeKinds.has("svg");
+  const showVideo = scopeKinds.has("video");
+  const showAnimation = scopeKinds.has("animated");
 
   const [mode, setMode] = useState<Mode>(scopeSetting?.mode ?? "A");
   const [scaleText, setScaleText] = useState("");
@@ -461,9 +476,9 @@ export default function SettingsPanel({
           </div>
         )}
 
-        <ImageOptionsPanel />
-        <VideoOptionsPanel />
-        <AnimationOptionsPanel />
+        {showImage && <ImageOptionsPanel />}
+        {showVideo && <VideoOptionsPanel />}
+        {showAnimation && <AnimationOptionsPanel />}
         <OutputSettingsPanel />
       </div>
     </Panel>

@@ -1,28 +1,22 @@
 import { useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 
-import { pickOutputFolder } from "../api";
 import { useStore } from "../store";
 import type { ProgressEvent } from "../types";
 import { Button, Checkbox, Field, Select, Tag, TextInput } from "./ui";
 
-/** 输出设置与执行选项（规范 6.5 / 6.7 / 6.13）。 */
+/** 执行选项（规范 6.5 / 6.7 / 6.13）。输出目录选择已移到顶部扫描栏。 */
 export default function OutputSettingsPanel() {
   const settings = useStore((s) => s.settings);
-  const outputMode = useStore((s) => s.outputMode);
-  const userOutputDir = useStore((s) => s.userOutputDir);
   const dryRun = useStore((s) => s.dryRun);
   const backup = useStore((s) => s.backup);
   const skipUnchanged = useStore((s) => s.skipUnchanged);
   const verifyOutput = useStore((s) => s.verifyOutput);
-  const outputDir = useStore((s) => s.outputDir);
   const progress = useStore((s) => s.progress);
   const running = useStore((s) => s.running);
   const diskFree = useStore((s) => s.diskFree);
 
   const setOutput = useStore((s) => s.setOutput);
-  const setOutputMode = useStore((s) => s.setOutputMode);
-  const setUserOutputDir = useStore((s) => s.setUserOutputDir);
   const setDryRun = useStore((s) => s.setDryRun);
   const setBackup = useStore((s) => s.setBackup);
   const setSkipUnchanged = useStore((s) => s.setSkipUnchanged);
@@ -42,49 +36,12 @@ export default function OutputSettingsPanel() {
 
   if (!settings) return null;
 
-  const effectiveDir = outputMode === "user" ? userOutputDir : outputDir;
-
   return (
     <section className="space-y-3 border-t border-border pt-3">
       <div className="flex items-center gap-2">
-        <h3 className="text-[11px] font-semibold text-muted">输出与执行</h3>
+        <h3 className="text-[11px] font-semibold text-muted">执行选项</h3>
         {dryRun && <Tag tone="warn">干跑</Tag>}
       </div>
-
-      {/* 两种输出目录方式并存（规范 6.5） */}
-      <Field label="输出目录">
-        <Select
-          value={outputMode}
-          onChange={setOutputMode}
-          options={[
-            { value: "sibling", label: "跟随源文件夹（同级 output/）" },
-            { value: "user", label: "每次任务由我指定" },
-          ]}
-        />
-      </Field>
-
-      {outputMode === "user" && (
-        <div className="flex items-center gap-2">
-          <Button
-            onClick={() => {
-              void pickOutputFolder().then((dir) => {
-                if (dir) setUserOutputDir(dir);
-              });
-            }}
-          >
-            选择目录
-          </Button>
-          <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-faint" title={userOutputDir ?? ""}>
-            {userOutputDir ?? "尚未选择"}
-          </span>
-        </div>
-      )}
-
-      {effectiveDir && (
-        <p className="truncate font-mono text-[11px] text-faint" title={effectiveDir}>
-          将输出到：{effectiveDir}
-        </p>
-      )}
 
       <Field label="同名文件">
         <Select

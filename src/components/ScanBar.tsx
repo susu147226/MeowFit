@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 
-import { pickFolder } from "../api";
+import { pickFolder, pickOutputFolder } from "../api";
 import { useStore } from "../store";
 import { Button, Checkbox, Select, TextInput } from "./ui";
 
@@ -16,6 +16,12 @@ export default function ScanBar() {
   // 选择器必须返回稳定引用：每次新建 [] 会让 zustand 判定状态变化并陷入无限重渲染
   const recentFolders = useStore((s) => s.settings?.recentFolders ?? EMPTY_FOLDERS);
   const log = useStore((s) => s.log);
+  // 输出目录（规范 6.5 两种方式）——放在扫描栏，紧邻「递归子文件夹」
+  const outputMode = useStore((s) => s.outputMode);
+  const userOutputDir = useStore((s) => s.userOutputDir);
+  const outputDir = useStore((s) => s.outputDir);
+  const setOutputMode = useStore((s) => s.setOutputMode);
+  const setUserOutputDir = useStore((s) => s.setUserOutputDir);
 
   const [dragging, setDragging] = useState(false);
   const [pathInput, setPathInput] = useState("");
@@ -135,6 +141,41 @@ export default function ScanBar() {
             递归子文件夹
           </Checkbox>
         </span>
+      </div>
+
+      {/* 输出目录（规范 6.5 两种方式）：紧邻「递归子文件夹」 */}
+      <div className="mt-2 flex items-center gap-2">
+        <span className="shrink-0 text-[11px] text-faint">输出目录</span>
+        <Select
+          className="max-w-[210px]"
+          value={outputMode}
+          onChange={setOutputMode}
+          options={[
+            { value: "sibling", label: "跟随源文件夹（同级 output/）" },
+            { value: "user", label: "每次任务由我指定" },
+          ]}
+        />
+        {outputMode === "user" && (
+          <>
+            <Button
+              onClick={() => {
+                void pickOutputFolder().then((dir) => {
+                  if (dir) setUserOutputDir(dir);
+                });
+              }}
+            >
+              选择目录
+            </Button>
+            <span className="min-w-0 truncate font-mono text-[11px] text-faint" title={userOutputDir ?? ""}>
+              {userOutputDir ?? "尚未选择"}
+            </span>
+          </>
+        )}
+        {outputMode !== "user" && outputDir && (
+          <span className="min-w-0 truncate font-mono text-[11px] text-faint" title={outputDir}>
+            {outputDir}
+          </span>
+        )}
       </div>
 
       <div className="mt-2 flex items-center gap-2">
